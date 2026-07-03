@@ -16,7 +16,19 @@ try:
 except ImportError:
     _C = None
 
-__all__ = ["_C", "__version__"]
+# Load the training / codegen extension that registers XPU and AutogradXPU
+# implementations for the embedding lookup operators
+# (dense_embedding_codegen_lookup_function, split_embedding_codegen_lookup_*).
+# It must be imported after _C so the operator schemas declared there are
+# already visible when the TORCH_LIBRARY_IMPL static initialisers run.
+try:
+    from . import _C_training as _C_training
+except ImportError:
+    _C_training = None
+
+from . import ops as ops
+
+__all__ = ["_C", "_C_training", "ops", "__version__"]
 
 try:
     from ._version import __version__
