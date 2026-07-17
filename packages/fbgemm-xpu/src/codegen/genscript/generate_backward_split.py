@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 try:
-    from jinja2 import Environment, FileSystemLoader, Template
+    from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
 except ImportError:
     print("Error: jinja2 not installed. Install with: pip install jinja2")
     sys.exit(1)
@@ -138,6 +138,11 @@ def main():
 
     env = Environment(
         loader=FileSystemLoader(template_dir),
+        autoescape=select_autoescape(
+            enabled_extensions=("html", "htm", "xml"),
+            default_for_string=False,
+            default=False,
+        ),
         trim_blocks=True,
         lstrip_blocks=True
     )
@@ -147,6 +152,11 @@ def main():
 
     pt2_env = Environment(
         loader=FileSystemLoader(str(pt2_template_dir)),
+        autoescape=select_autoescape(
+            enabled_extensions=("html", "htm", "xml"),
+            default_for_string=False,
+            default=False,
+        ),
         trim_blocks=True,
         lstrip_blocks=True
     )
@@ -254,7 +264,14 @@ def validate_template():
         'embedding_backward_split_kernel_warp_template.cpp',
     ]
 
-    env = Environment(loader=FileSystemLoader('.'))
+    env = Environment(
+        loader=FileSystemLoader('.'),
+        autoescape=select_autoescape(
+            enabled_extensions=("html", "htm", "xml"),
+            default_for_string=False,
+            default=False,
+        ),
+    )
 
     for template_file in templates:
         if not Path(template_file).exists():

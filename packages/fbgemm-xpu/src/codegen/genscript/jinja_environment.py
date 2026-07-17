@@ -32,7 +32,12 @@ if args.is_fbcode:
     # custom_rule().  The templates will be visible there because they are
     # specified in the `srcs` field of the rule.
     env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(os.path.abspath(os.environ["SRCDIR"]))
+        loader=jinja2.FileSystemLoader(os.path.abspath(os.environ["SRCDIR"])),
+        autoescape=jinja2.select_autoescape(
+            enabled_extensions=("html", "htm", "xml"),
+            default_for_string=False,
+            default=False,
+        ),
     )
 else:
     # In OSS, because the generation script is held in `codegen/genscript`, we
@@ -41,7 +46,12 @@ else:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        ),
+        autoescape=jinja2.select_autoescape(
+            enabled_extensions=("html", "htm", "xml"),
+            default_for_string=False,
+            default=False,
+        ),
     )
 
 
@@ -366,11 +376,17 @@ def make_pta_acc_format(pta_str_list: List[str], func_name: str) -> List[str]:
             match = re.search(
                 r"([a-zA-z0-9_]*)[.]packed_accessor([3|6][2|4])<(.*)>\(\)", pta_str
             )
-            assert match is not None and len(match.groups()) == 3
+            if match is None or len(match.groups()) != 3:
+                raise ValueError(
+                    f"Failed to parse packed_accessor expression: {pta_str}"
+                )
             tensor, acc_nbits, args = match.groups()
             if "acc_type" in args:
                 match = re.search("at::acc_type<([a-zA-Z_0-9]*), true>", args)
-                assert match is not None and len(match.groups()) == 1
+                if match is None or len(match.groups()) != 1:
+                    raise ValueError(
+                        f"Failed to parse acc_type expression: {args}"
+                    )
                 new_type = match.group(1)
                 args = re.sub("at::acc_type<[a-zA-Z_]*, true>", new_type, args)
                 macro_name = "MAKE_PTA_ACC_WITH_NAME"
@@ -392,11 +408,17 @@ def make_pta_acc_builder_format(pta_str_list: List[str]) -> List[str]:
             match = re.search(
                 r"([a-zA-z0-9_]*)[.]packed_accessor([3|6][2|4])<(.*)>\(\)", pta_str
             )
-            assert match is not None and len(match.groups()) == 3
+            if match is None or len(match.groups()) != 3:
+                raise ValueError(
+                    f"Failed to parse packed_accessor expression: {pta_str}"
+                )
             tensor, acc_nbits, args = match.groups()
             if "acc_type" in args:
                 match = re.search("at::acc_type<([a-zA-Z_0-9]*), true>", args)
-                assert match is not None and len(match.groups()) == 1
+                if match is None or len(match.groups()) != 1:
+                    raise ValueError(
+                        f"Failed to parse acc_type expression: {args}"
+                    )
                 new_type = match.group(1)
                 args = re.sub("at::acc_type<[a-zA-Z_]*, true>", new_type, args)
                 macro_name = "PTA_ACC_B"
