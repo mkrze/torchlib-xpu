@@ -224,6 +224,12 @@ target_include_directories(_C_training PRIVATE
     ${Python3_INCLUDE_DIRS}
 )
 
+# asynchronous_complete_cumsum.cpp is shared with the _C extension, which owns
+# the fbgemm::asynchronous_complete_cumsum operator registration. Here we only
+# need the asynchronous_complete_cumsum_xpu() C++ helper for backward_utils, so
+# suppress the duplicate TORCH_LIBRARY_IMPL registration in this target.
+target_compile_definitions(_C_training PRIVATE FBGEMM_XPU_TRAINING_BUILD)
+
 target_link_libraries(_C_training PRIVATE ${TORCH_LIBRARIES})
 
 target_compile_options(_C_training PRIVATE

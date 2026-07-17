@@ -10,7 +10,7 @@
 
 #include "fbgemm_utils/torch_library.h"
 
-using fbgemm_xpu::utils::torch::schemaExists;
+using namespace fbgemm_xpu;
 
 extern "C" {
 /**
@@ -49,7 +49,7 @@ PyObject* PyInit__C(void) {
 TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
     // ===== Dense Embedding Operators =====
 
-    if (!schemaExists(
+    if (!utils::torch::schemaExists(
             "fbgemm::dense_embedding_codegen_lookup_function")) {
         m.def(
             "dense_embedding_codegen_lookup_function("
@@ -75,7 +75,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             "    bool mixed_D=True) -> Tensor");
     }
 
-    if (!schemaExists(
+    if (!utils::torch::schemaExists(
             "fbgemm::dense_embedding_nobag_forward_unweighted_xpu")) {
         m.def(
             "dense_embedding_nobag_forward_unweighted_xpu("
@@ -91,7 +91,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
 
     // ===== Split Embedding Operators =====
 
-    if (!schemaExists("fbgemm::split_embedding_nobag_backward_"
+    if (!utils::torch::schemaExists("fbgemm::split_embedding_nobag_backward_"
                                     "codegen_dense_unweighted_exact_xpu")) {
         m.def(
             "split_embedding_nobag_backward_codegen_dense_unweighted_exact_xpu("
@@ -108,7 +108,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             "    float unused = 0) -> Tensor");
     }
 
-    if (!schemaExists("fbgemm::split_embedding_codegen_lookup_"
+    if (!utils::torch::schemaExists("fbgemm::split_embedding_codegen_lookup_"
                                     "rowwise_adagrad_function_pt2")) {
         m.def(
             "split_embedding_codegen_lookup_rowwise_adagrad_function_pt2("
@@ -140,7 +140,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> Tensor");
     }
 
-    if (!schemaExists("fbgemm::split_embedding_nobag_codegen_"
+    if (!utils::torch::schemaExists("fbgemm::split_embedding_nobag_codegen_"
                                     "forward_unweighted_pt2_wrapper")) {
         m.def(
             "split_embedding_nobag_codegen_forward_unweighted_pt2_wrapper("
@@ -161,7 +161,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> Tensor");
     }
 
-    if (!schemaExists(
+    if (!utils::torch::schemaExists(
             "fbgemm::split_embedding_nobag_backward_codegen_rowwise_adagrad_"
             "unweighted_exact_xpu")) {
         m.def(
@@ -198,7 +198,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> Tensor");
     }
 
-    if (!schemaExists(
+    if (!utils::torch::schemaExists(
             "fbgemm::split_embedding_nobag_forward_unweighted_xpu")) {
         m.def(
             "split_embedding_nobag_forward_unweighted_xpu("
@@ -217,7 +217,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> Tensor");
     }
 
-    if (!schemaExists(
+    if (!utils::torch::schemaExists(
             "fbgemm::split_embedding_nobag_backward_codegen_rowwise_adagrad_"
             "unweighted_pt2_wrapper")) {
         m.def(
@@ -256,11 +256,11 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> Tensor");
     }
 
-    if (!schemaExists("fbgemm::invert_permute")) {
+    if (!utils::torch::schemaExists("fbgemm::invert_permute")) {
         m.def("invert_permute(Tensor permute) -> Tensor");
     }
 
-    if (!schemaExists("fbgemm::permute_1D_sparse_data")) {
+    if (!utils::torch::schemaExists("fbgemm::permute_1D_sparse_data")) {
         m.def(
             "permute_1D_sparse_data("
             "    Tensor permute, "
@@ -271,23 +271,23 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> (Tensor, Tensor, Tensor?)");
     }
 
-    if (!schemaExists("fbgemm::asynchronous_complete_cumsum")) {
+    if (!utils::torch::schemaExists("fbgemm::asynchronous_complete_cumsum")) {
         m.def("asynchronous_complete_cumsum(Tensor t_in) -> Tensor");
     }
 
-    if (!schemaExists("fbgemm::asynchronous_exclusive_cumsum")) {
+    if (!utils::torch::schemaExists("fbgemm::asynchronous_exclusive_cumsum")) {
         m.def(
             "asynchronous_exclusive_cumsum(Tensor t_in) -> Tensor"
         );
     }
 
-    if (!schemaExists("fbgemm::asynchronous_inclusive_cumsum")) {
+    if (!utils::torch::schemaExists("fbgemm::asynchronous_inclusive_cumsum")) {
         m.def(
             "asynchronous_inclusive_cumsum(Tensor t_in) -> Tensor"
         );
     }
 
-    if (!schemaExists("fbgemm::permute_2D_sparse_data")) {
+    if (!utils::torch::schemaExists("fbgemm::permute_2D_sparse_data")) {
         m.def(
             "permute_2D_sparse_data("
             "    Tensor permute, "
@@ -298,7 +298,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> (Tensor, Tensor, Tensor?)");
     }
 
-    if (!schemaExists("fbgemm::permute_2D_sparse_preallocated_out")) {
+    if (!utils::torch::schemaExists("fbgemm::permute_2D_sparse_preallocated_out")) {
         m.def(
             "permute_2D_sparse_preallocated_out("
             "    Tensor permute, "
@@ -313,13 +313,13 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
         );
     }
 
-    if (!schemaExists("fbgemm::get_infos_metadata")) {
+    if (!utils::torch::schemaExists("fbgemm::get_infos_metadata")) {
         m.def(
             "get_infos_metadata(Tensor unused, int B, int T) -> (int, int)"
         );
     }
 
-    if (!schemaExists("fbgemm::block_bucketize_sparse_features")) {
+    if (!utils::torch::schemaExists("fbgemm::block_bucketize_sparse_features")) {
         m.def(
             "block_bucketize_sparse_features("
             "    Tensor lengths, "
@@ -338,7 +338,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> (Tensor, Tensor, Tensor?, Tensor?, Tensor?)");
     }
 
-    if (!schemaExists(
+    if (!utils::torch::schemaExists(
             "fbgemm::block_bucketize_sparse_features_inference")) {
         m.def(
             "block_bucketize_sparse_features_inference("
@@ -359,7 +359,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             ") -> (Tensor, Tensor, Tensor?, Tensor?, Tensor?, Tensor?)");
     }
 
-    if (!schemaExists("fbgemm::populate_bucketized_permute")) {
+    if (!utils::torch::schemaExists("fbgemm::populate_bucketized_permute")) {
         m.def(
             "populate_bucketized_permute("
             "    Tensor lengths, "
