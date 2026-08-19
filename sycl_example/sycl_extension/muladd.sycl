@@ -1,0 +1,210 @@
+#include <ATen/ATen.h>
+#include <c10/xpu/XPUStream.h>
+#include <sycl/sycl.hpp>
+#include <torch/library.h>
+
+namespace sycl_extension {
+
+// ---------------------------------------------------------------------------
+// 1. Kernels (functors) — the per-element code each GPU thread runs.
+// ---------------------------------------------------------------------------
+
+// result[idx] = a[idx] * b[idx] + c
+class MulAddKernelFunctor {
+ public:
+  MulAddKernelFunctor(
+      int numel,
+      const float* a,
+      const float* b,
+      float c,
+      float* result)
+      : numel_(numel), a_(a), b_(b), c_(c), result_(result) {}
+
+  void operator()(const sycl::nd_item<1>& item) const {
+    int idx = item.get_global_id(0);
+    if (idx < numel_) {
+      result_[idx] = a_[idx] * b_[idx] + c_;
+    }
+  }
+
+ private:
+  int numel_;
+  const float* a_;
+  const float* b_;
+  float c_;
+  float* result_;
+};
+
+// result[idx] = a[idx] * b[idx]
+class MulKernelFunctor {
+ public:
+  MulKernelFunctor(int numel, const float* a, const float* b, float* result)
+      : numel_(numel), a_(a), b_(b), result_(result) {}
+
+  void operator()(const sycl::nd_item<1>& item) const {
+    int idx = item.get_global_id(0);
+    if (idx < numel_) {
+      result_[idx] = a_[idx] * b_[idx];
+    }
+  }
+
+ private:
+  int numel_;
+  const float* a_;
+  const float* b_;
+  float* result_;
+};
+
+// out[idx] = a[idx] + b[idx]  (writes into a pre-allocated output)
+class AddKernelFunctor {
+ public:
+  AddKernelFunctor(int numel, const float* a, const float* b, float* out)
+      : numel_(numel), a_(a), b_(b), out_(out) {}
+
+  void operator()(const sycl::nd_item<1>& item) const {
+    int idx = item.get_global_id(0);
+    if (idx < numel_) {
+      out_[idx] = a_[idx] + b_[idx];
+    }
+  }
+
+ private:
+  int numel_;
+  const float* a_;
+  const float* b_;
+  float* out_;
+};
+
+// ---------------------------------------------------------------------------
+// 2. Host wrappers — validate, allocate, grab PyTorch's XPU queue, submit.
+// ---------------------------------------------------------------------------
+
+namespace {
+constexpr int kThreads = 256;
+
+inline int blocks_for(int numel) {
+  return (numel + kThreads - 1) / kThreads;
+}
+} // namespace
+
+at::Tensor mymuladd_xpu(const at::Tensor& a, const at::Tensor& b, double c) {
+  TORCH_CHECK(a.sizes() == b.sizes(), "a and b must have the same shape");
+  TORCH_CHECK(a.dtype() == at::kFloat, "a must be a float tensor");
+  TORCH_CHECK(b.dtype() == at::kFloat, "b must be a float tensor");
+  TORCH_CHECK(a.device().is_xpu(), "a must be an XPU tensor");
+  TORCH_CHECK(b.device().is_xpu(), "b must be an XPU tensor");
+
+  at::Tensor a_contig = a.contiguous();
+  at::Tensor b_contig = b.contiguous();
+  at::Tensor result = at::empty_like(a_contig);
+
+  const float* a_ptr = a_contig.data_ptr<float>();
+  const float* b_ptr = b_contig.data_ptr<float>();
+  float* res_ptr = result.data_ptr<float>();
+  int numel = a_contig.numel();
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+  int blocks = blocks_for(numel);
+
+  queue.submit([&](sycl::handler& cgh) {
+    cgh.parallel_for<MulAddKernelFunctor>(
+        sycl::nd_range<1>(blocks * kThreads, kThreads),
+        MulAddKernelFunctor(
+            numel, a_ptr, b_ptr, static_cast<float>(c), res_ptr));
+  });
+
+  return result;
+}
+
+at::Tensor mymul_xpu(const at::Tensor& a, const at::Tensor& b) {
+  TORCH_CHECK(a.sizes() == b.sizes(), "a and b must have the same shape");
+  TORCH_CHECK(a.dtype() == at::kFloat, "a must be a float tensor");
+  TORCH_CHECK(b.dtype() == at::kFloat, "b must be a float tensor");
+  TORCH_CHECK(a.device().is_xpu(), "a must be an XPU tensor");
+  TORCH_CHECK(b.device().is_xpu(), "b must be an XPU tensor");
+
+  at::Tensor a_contig = a.contiguous();
+  at::Tensor b_contig = b.contiguous();
+  at::Tensor result = at::empty_like(a_contig);
+
+  const float* a_ptr = a_contig.data_ptr<float>();
+  const float* b_ptr = b_contig.data_ptr<float>();
+  float* res_ptr = result.data_ptr<float>();
+  int numel = a_contig.numel();
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+  int blocks = blocks_for(numel);
+
+  queue.submit([&](sycl::handler& cgh) {
+    cgh.parallel_for<MulKernelFunctor>(
+        sycl::nd_range<1>(blocks * kThreads, kThreads),
+        MulKernelFunctor(numel, a_ptr, b_ptr, res_ptr));
+  });
+
+  return result;
+}
+
+// In-place: writes a + b into the pre-allocated `out` tensor.
+void myadd_out_xpu(const at::Tensor& a, const at::Tensor& b, at::Tensor& out) {
+  TORCH_CHECK(a.sizes() == b.sizes(), "a and b must have the same shape");
+  TORCH_CHECK(b.sizes() == out.sizes(), "b and out must have the same shape");
+  TORCH_CHECK(a.dtype() == at::kFloat, "a must be a float tensor");
+  TORCH_CHECK(b.dtype() == at::kFloat, "b must be a float tensor");
+  TORCH_CHECK(out.is_contiguous(), "out must be contiguous");
+  TORCH_CHECK(a.device().is_xpu(), "a must be an XPU tensor");
+  TORCH_CHECK(b.device().is_xpu(), "b must be an XPU tensor");
+  TORCH_CHECK(out.device().is_xpu(), "out must be an XPU tensor");
+
+  at::Tensor a_contig = a.contiguous();
+  at::Tensor b_contig = b.contiguous();
+
+  const float* a_ptr = a_contig.data_ptr<float>();
+  const float* b_ptr = b_contig.data_ptr<float>();
+  float* out_ptr = out.data_ptr<float>();
+  int numel = a_contig.numel();
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+  int blocks = blocks_for(numel);
+
+  queue.submit([&](sycl::handler& cgh) {
+    cgh.parallel_for<AddKernelFunctor>(
+        sycl::nd_range<1>(blocks * kThreads, kThreads),
+        AddKernelFunctor(numel, a_ptr, b_ptr, out_ptr));
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 3. Registration — declare the schema once, bind the XPU implementations.
+// ---------------------------------------------------------------------------
+
+TORCH_LIBRARY(sycl_extension, m) {
+  m.def("mymuladd(Tensor a, Tensor b, float c) -> Tensor");
+  m.def("mymul(Tensor a, Tensor b) -> Tensor");
+  m.def("myadd_out(Tensor a, Tensor b, Tensor(a!) out) -> ()");
+}
+
+TORCH_LIBRARY_IMPL(sycl_extension, XPU, m) {
+  m.impl("mymuladd", &mymuladd_xpu);
+  m.impl("mymul", &mymul_xpu);
+  m.impl("myadd_out", &myadd_out_xpu);
+}
+
+} // namespace sycl_extension
+
+// Windows shim so the compiled `_C` extension loads as a Python module.
+// Only needed on Windows; on Linux the .so is loaded via ctypes.CDLL.
+#ifdef _WIN32
+#include <Python.h>
+extern "C" {
+PyObject* PyInit__C(void) {
+  static struct PyModuleDef module_def = {
+      PyModuleDef_HEAD_INIT,
+      "_C",
+      nullptr,
+      -1,
+      nullptr,
+  };
+  return PyModule_Create(&module_def);
+}
+}
+#endif
