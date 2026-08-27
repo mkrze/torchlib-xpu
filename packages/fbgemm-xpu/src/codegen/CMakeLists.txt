@@ -199,7 +199,7 @@ set(training_sources
     # Declared in backward_utils.h, defined here (must be compiled with -fsycl).
     ${FBGEMM_XPU_SRC_DIR}/fbgemm_utils/backward_utils.cpp
     # Prefix-sum kernel used by backward_utils (asynchronous_complete_cumsum_xpu).
-    ${FBGEMM_XPU_SRC_DIR}/asynchronous_complete_cumsum.cpp
+    ${FBGEMM_XPU_SRC_DIR}/sparse_async_cumsum.cpp
 )
 
 # --------------------------------------------------------------------------
@@ -224,7 +224,7 @@ target_include_directories(_C_training PRIVATE
     ${Python3_INCLUDE_DIRS}
 )
 
-# asynchronous_complete_cumsum.cpp is shared with the _C extension, which owns
+# sparse_async_cumsum.cpp is shared with the _C extension, which owns
 # the fbgemm::asynchronous_complete_cumsum operator registration. Here we only
 # need the asynchronous_complete_cumsum_xpu() C++ helper for backward_utils, so
 # suppress the duplicate TORCH_LIBRARY_IMPL registration in this target.
