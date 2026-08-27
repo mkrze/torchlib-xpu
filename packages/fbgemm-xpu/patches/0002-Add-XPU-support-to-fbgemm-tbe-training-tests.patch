@@ -731,9 +731,8 @@ index 2ee72115c..c5ef1b143 100644
              cc = torch.jit.script(cc)
  
          for t in range(T):
-@@ -667,6 +835,7 @@ class ForwardTest(unittest.TestCase):
+@@ -667,5 +835,6 @@ class ForwardTest(unittest.TestCase):
          deadline=None,
-         suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.data_too_large],
      )
 +    @unittest.skipIf(_XPU_ONLY, "FP16 large-grid test uses torch.cuda APIs")
      def test_forward_gpu_no_cache_fp16_large(
@@ -747,41 +746,36 @@ index 2ee72115c..c5ef1b143 100644
      def test_forward_gpu_no_cache_fp8(
          self,
          use_experimental_tbe: bool = False,  # TODO This does not yet work when True.
-@@ -958,6 +1128,7 @@ class ForwardTest(unittest.TestCase):
+@@ -958,5 +1128,6 @@ class ForwardTest(unittest.TestCase):
          deadline=None,
-         suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.data_too_large],
      )
 +    @unittest.skipIf(_XPU_ONLY, "UVM cache is not implemented on XPU")
      def test_forward_gpu_uvm_cache_int8(
          self,
          cache_algorithm: CacheAlgorithm,
-@@ -1024,6 +1195,7 @@ class ForwardTest(unittest.TestCase):
+@@ -1024,5 +1195,6 @@ class ForwardTest(unittest.TestCase):
          deadline=None,
-         suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.data_too_large],
      )
 +    @unittest.skipIf(_XPU_ONLY, "UVM cache is not implemented on XPU")
      def test_forward_gpu_uvm_cache_fp8(
          self,
          cache_algorithm: CacheAlgorithm,
-@@ -1238,6 +1410,7 @@ class ForwardTest(unittest.TestCase):
+@@ -1238,5 +1410,6 @@ class ForwardTest(unittest.TestCase):
          deadline=None,
-         suppress_health_check=[HealthCheck.filter_too_much],
      )
 +    @unittest.skipIf(_XPU_ONLY, "Fused pooled embedding quant is not implemented on XPU")
      def test_forward_fused_pooled_emb_quant(
          self,
          T: int,
-@@ -1375,6 +1548,7 @@ class ForwardTest(unittest.TestCase):
+@@ -1375,5 +1548,6 @@ class ForwardTest(unittest.TestCase):
          deadline=None,
-         suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.data_too_large],
      )
 +    @unittest.skipIf(_XPU_ONLY, "Raw embedding streaming is not implemented on XPU")
      def test_forward_raw_embedding_streaming(
          self,
          T: int,
-@@ -1445,6 +1619,7 @@ class ForwardTest(unittest.TestCase):
+@@ -1445,5 +1619,6 @@ class ForwardTest(unittest.TestCase):
          deadline=None,
-         suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.data_too_large],
      )
 +    @unittest.skipIf(_XPU_ONLY, "Raw embedding streaming is not implemented on XPU")
      def test_forward_mixed_cache_non_cache_tables_w_raw_embedding_streaming(
@@ -791,9 +785,13 @@ diff --git a/fbgemm_gpu/test/test_utils.py b/fbgemm_gpu/test/test_utils.py
 index d3d03d053..c336c0ac8 100644
 --- a/fbgemm_gpu/test/test_utils.py
 +++ b/fbgemm_gpu/test/test_utils.py
-@@ -20,6 +20,14 @@ import hypothesis.strategies as st
+@@ -17,9 +17,17 @@ from functools import wraps
+ from typing import Any
+ 
+ import fbgemm_gpu
+ import hypothesis.strategies as st
  import torch
- from hypothesis import settings
+ from hypothesis import HealthCheck, settings
  
 +# Register the XPU (Intel GPU) FBGEMM operator implementations, if available.
 +# Import is best-effort: environments without the fbgemm-xpu package continue to
@@ -803,10 +801,9 @@ index d3d03d053..c336c0ac8 100644
 +except ImportError:
 +    pass
 +
- settings.register_profile("derandomize", derandomize=True)
- settings.load_profile("derandomize")
- 
-@@ -44,15 +52,26 @@ additional_decorators: dict[str, list[Callable[..., Any]]] = {
+ _suppressed_health_checks: list[HealthCheck] = [
+     HealthCheck.filter_too_much,
+@@ -58,30 +58,41 @@ additional_decorators: dict[str, list[Callable[..., Any]]] = {
      ],
  }
  
@@ -831,6 +828,21 @@ index d3d03d053..c336c0ac8 100644
  )
  # Used for `if` statements inside tests
  gpu_available: bool = not gpu_unavailable[0]
+ 
+ # Generic PyTorch accelerator (CUDA/XPU/...) probes, used for tests that only
+ # need "some" accelerator rather than a hardcoded backend.
+ accelerator_unavailable: tuple[bool, str] = (
+     not torch.accelerator.is_available() or torch.accelerator.device_count() == 0,
+     "No PyTorch accelerator (CUDA/XPU/...) is available",
+ )
+ # Used for `if` statements inside tests
+ accelerator_available: bool = not accelerator_unavailable[0]
+ 
+ 
+ def current_accelerator() -> torch.device | None:
+     """Return the currently active PyTorch accelerator device, or None."""
+     return torch.accelerator.current_accelerator() if accelerator_available else None
+ 
  
 -is_nvidia_device: bool = gpu_available and torch.version.cuda is not None
 +is_nvidia_device: bool = cuda_available and torch.version.cuda is not None
