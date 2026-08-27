@@ -50,7 +50,7 @@
 #include <tuple>
 #include <sycl/sycl.hpp>
 
-#include "../asynchronous_complete_cumsum.h"
+#include "../sparse_async_cumsum.h"
 #include "fbgemm_utils/utils.h"
 #include "fbgemm_utils/vec4.h"
 

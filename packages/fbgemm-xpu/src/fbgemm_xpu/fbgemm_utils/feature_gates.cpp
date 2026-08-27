@@ -10,7 +10,6 @@
 #include <string>
 
 #include "fbgemm_utils/feature_gates.h"
-#include "fbgemm_utils/function_types.h"
 
 namespace fbgemm_xpu::config {
 
@@ -56,17 +55,17 @@ static bool check_feature_gate_key_impl(
   return value;
 }
 
-DLL_PUBLIC bool check_feature_gate_key(const std::string& key) {
+bool check_feature_gate_key(const std::string& key) {
   static const auto no_jk = false;
 
   return check_feature_gate_key_impl(key, no_jk);
 }
 
-DLL_PUBLIC bool is_feature_enabled(const FeatureGateName& feature) {
+bool is_feature_enabled(const FeatureGateName& feature) {
   return check_feature_gate_key(to_string(feature));
 }
 
-DLL_PUBLIC bool is_feature_enabled_from_env(const FeatureGateName& feature) {
+bool is_feature_enabled_from_env(const FeatureGateName& feature) {
   return check_feature_gate_key_impl(
       to_string(feature), /* check_env_vars_only */ true);
 }
