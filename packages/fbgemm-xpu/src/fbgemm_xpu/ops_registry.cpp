@@ -113,6 +113,12 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
         );
     }
 
+    if (!utils::torch::schemaExists("fbgemm::get_infos_metadata")) {
+        m.def(
+            "get_infos_metadata(Tensor unused, int B, int T) -> (int, int)"
+        );
+    }
+
     if (!utils::torch::schemaExists("fbgemm::block_bucketize_sparse_features")) {
         m.def(
             "block_bucketize_sparse_features("
@@ -160,6 +166,17 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
             "    Tensor lengths, "
             "    Tensor bucketized_lengths, "
             "    Tensor bucket_mapping"
+            ") -> Tensor"
+        );
+    }
+
+    if (!utils::torch::schemaExists("fbgemm::expand_into_jagged_permute")) {
+        m.def(
+            "expand_into_jagged_permute("
+            "    Tensor permute, "
+            "    Tensor input_offsets, "
+            "    Tensor output_offsets, "
+            "    SymInt output_size"
             ") -> Tensor"
         );
     }
