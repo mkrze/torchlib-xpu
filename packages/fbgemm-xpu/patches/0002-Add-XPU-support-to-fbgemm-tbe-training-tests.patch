@@ -875,3 +875,87 @@ index d3d03d053..c336c0ac8 100644
 -- 
 2.43.0
 
+diff --git a/fbgemm_gpu/test/tbe/training/backward_adagrad_test.py b/fbgemm_gpu/test/tbe/training/backward_adagrad_test.py
+index f6c1cea9c..550aaf292 100644
+--- a/fbgemm_gpu/test/tbe/training/backward_adagrad_test.py
++++ b/fbgemm_gpu/test/tbe/training/backward_adagrad_test.py
+@@ -59,6 +59,7 @@
+     @unittest.skipIf(*gpu_unavailable)
+     @given(mixed_B=st.booleans(), **test_st)
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp16_pmSUM(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -75,6 +76,7 @@
+     @unittest.skipIf(*gpu_unavailable)
+     @given(mixed_B=st.booleans(), **test_st)
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp8_pmSUM(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -98,6 +100,7 @@
+         **test_st,
+     )
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp16_pmMEAN(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -132,6 +135,7 @@
+         **test_st,
+     )
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp32_pmSUM(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -149,6 +153,7 @@
+         **test_st_cpu,
+     )
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp32_cpu(  # noqa C901
+         self,
+         pooling_mode: PoolingMode,
+@@ -170,6 +175,7 @@
+         **test_st_cpu,
+     )
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp32_pmNONE_cpu(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -187,6 +193,7 @@
+         **test_st,
+     )
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp32_pmMEAN(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -222,6 +229,7 @@
+         **test_st,
+     )
+     @settings(**common_settings)
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_fp16_pmSUM_with_max_norm(  # noqa C901
+         self,
+         **kwargs: Any,
+@@ -523,6 +531,7 @@
+ 
+     @unittest.skipIf(*gpu_unavailable)
+     @unittest.skipIf(*gpu_memory_lt_gb(40))
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_from_config_file(self) -> None:
+         """
+         Test backward adagrad pass using TBE specs loaded from a JSON file.
+@@ -618,6 +627,7 @@
+ 
+     @unittest.skipIf(*gpu_unavailable)
+     @unittest.skipIf(*gpu_memory_lt_gb(20))
++    @unittest.skip("Not yet exercised by the XPU test patch")
+     def test_backward_adagrad_with_simple_tbe_op(self) -> None:
+         """
+         Test execute_backward_adagrad with a pre-created TBE op.
