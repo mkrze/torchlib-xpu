@@ -38,9 +38,14 @@
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 
-// Upstream this was <comm/SYCLContext.h>. utils.h already provides
-// syclDeviceMaxWorkGroupSize and syclMaxSubGroupSize, which is all these
-// kernels need from it.
+// Upstream this was <comm/SYCLContext.h>, which pulls in the whole comm/ tree.
+// Only two pieces of it are actually needed. The device-property queries live in
+// utils.h next to the ones this package already had; sycl_kernel_submit comes
+// from comm/SYCLHelpers.h, which PyTorch's XPU headers reference but do not
+// install, so that one header (plus the Scalar.h it needs) is vendored under
+// fbgemm_utils/comm/.
+#include <comm/SYCLHelpers.h>
+
 #include "../fbgemm_utils/utils.h"
 
 namespace fbgemm_xpu {
