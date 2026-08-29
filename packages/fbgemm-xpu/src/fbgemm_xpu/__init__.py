@@ -26,7 +26,12 @@ try:
 except ImportError:
     _C_training = None
 
-__all__ = ["_C", "_C_training", "__version__"]
+# fbgemm_gpu's DENSE TBE constructor has no XPU branch; see the module docstring.
+from . import _tbe_dense_compat as _tbe_dense_compat
+
+_tbe_dense_compat.install()
+
+__all__ = ["_C", "_C_training", "_tbe_dense_compat", "__version__"]
 
 try:
     from ._version import __version__
