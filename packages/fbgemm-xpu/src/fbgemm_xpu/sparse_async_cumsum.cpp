@@ -101,10 +101,12 @@ at::Tensor asynchronous_inclusive_cumsum_xpu(const at::Tensor& t_in) {
   return t_out;
 }
 
+#ifndef FBGEMM_XPU_TRAINING_BUILD
 TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl("asynchronous_complete_cumsum", &fbgemm_xpu::asynchronous_complete_cumsum_xpu);
   m.impl("asynchronous_exclusive_cumsum", &fbgemm_xpu::asynchronous_exclusive_cumsum_xpu);
   m.impl("asynchronous_inclusive_cumsum", &fbgemm_xpu::asynchronous_inclusive_cumsum_xpu);
 }
+#endif // FBGEMM_XPU_TRAINING_BUILD
 
 } // namespace fbgemm_xpu
