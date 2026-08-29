@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 
 #include <c10/xpu/XPUStream.h>
@@ -117,6 +118,20 @@ static inline int64_t syclDeviceMaxWorkGroupSize(
     at::DeviceIndex dev_id = c10::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->max_work_group_size;
+}
+
+// Also absent from the installed XPU headers. The jagged tensor kernels take
+// this from comm/DeviceProperties.h upstream; deriving it from the device
+// properties here keeps that one function without vendoring the whole comm/
+// tree, which duplicates helpers this package already has.
+static inline int64_t syclMaxSubGroupSize(
+    at::DeviceIndex dev_id = c10::xpu::current_device()) {
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  const auto& subgroup_sizes = dev_prop->sub_group_sizes;
+  TORCH_CHECK(
+      !subgroup_sizes.empty(),
+      "The device subgroup sizes is empty, please check the device status.");
+  return *std::max_element(subgroup_sizes.begin(), subgroup_sizes.end());
 }
 
 // ============================================================================

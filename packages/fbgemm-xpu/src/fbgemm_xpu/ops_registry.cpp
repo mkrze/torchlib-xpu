@@ -75,6 +75,68 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
             "    bool mixed_D=True) -> Tensor");
     }
 
+    // ===== Jagged Tensor Operators (PR #96) =====
+    // Needed by the HammerKernel.PYTORCH HSTU attention fallback, which
+    // decomposes into jagged_to_padded_dense / dense_to_jagged.
+    if (!utils::torch::schemaExists("fbgemm::dense_to_jagged")) {
+        m.def(
+            "dense_to_jagged("
+            "    Tensor dense, "
+            "    Tensor[] x_offsets, "
+            "    SymInt? total_L=None"
+            ") -> (Tensor, Tensor[])");
+    }
+    if (!utils::torch::schemaExists("fbgemm::dense_to_jagged_forward")) {
+        m.def(
+            "dense_to_jagged_forward("
+            "    Tensor dense, "
+            "    Tensor[] x_offsets, "
+            "    SymInt? total_L=None"
+            ") -> Tensor");
+    }
+    if (!utils::torch::schemaExists("fbgemm::jagged_to_padded_dense")) {
+        m.def(
+            "jagged_to_padded_dense("
+            "    Tensor values, "
+            "    Tensor[] offsets, "
+            "    SymInt[] max_lengths, "
+            "    float padding_value=0.0"
+            ") -> Tensor");
+    }
+    if (!utils::torch::schemaExists("fbgemm::jagged_to_padded_dense_forward")) {
+        m.def(
+            "jagged_to_padded_dense_forward("
+            "    Tensor values, "
+            "    Tensor[] offsets, "
+            "    SymInt[] max_lengths, "
+            "    float padding_value=0.0"
+            ") -> Tensor");
+    }
+    if (!utils::torch::schemaExists("fbgemm::jagged_to_padded_dense_backward")) {
+        m.def(
+            "jagged_to_padded_dense_backward("
+            "    Tensor grad_output, "
+            "    Tensor[] offsets, "
+            "    SymInt total_L"
+            ") -> Tensor");
+    }
+    if (!utils::torch::schemaExists("fbgemm::jagged_dense_elementwise_add_jagged_output")) {
+        m.def(
+            "jagged_dense_elementwise_add_jagged_output("
+            "    Tensor x_values, "
+            "    Tensor[] x_offsets, "
+            "    Tensor y"
+            ") -> (Tensor, Tensor[])");
+    }
+    if (!utils::torch::schemaExists("fbgemm::jagged_2d_to_dense")) {
+        m.def(
+            "jagged_2d_to_dense("
+            "    Tensor values, "
+            "    Tensor offsets, "
+            "    SymInt max_sequence_length"
+            ") -> Tensor");
+    }
+
     if (!utils::torch::schemaExists("fbgemm::jagged_index_select_2d_forward")) {
         m.def(
             "jagged_index_select_2d_forward("

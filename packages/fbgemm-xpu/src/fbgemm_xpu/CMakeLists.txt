@@ -42,6 +42,7 @@ set(SYCL_DEVICE_LIST -Xs "-device ${TORCH_XPU_ARCH_LIST} -options -cl-poison-uns
 # integrated.
 # --------------------------------------------------------------------------
 set(host_sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/jagged_tensor_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/ops_registry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sparse_async_cumsum.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/split_embeddings_utils_xpu.cpp
@@ -49,6 +50,7 @@ set(host_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/expand_into_jagged_permute_kernel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/invert_permute_kernel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/jagged_index_select_2d.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/jagged_tensor_ops_kernels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/permute_1d_sparse_data.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/permute_2d_sparse_data.cpp
 )
