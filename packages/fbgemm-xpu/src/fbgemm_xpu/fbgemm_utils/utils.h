@@ -134,6 +134,14 @@ static inline int64_t syclMaxSubGroupSize(
   return *std::max_element(subgroup_sizes.begin(), subgroup_sizes.end());
 }
 
+// Shared-local-memory budget, used by the jagged kernels to size their SLM
+// scratch. Same provenance as the two above.
+static inline int64_t syclLocalMemSize(
+    at::DeviceIndex dev_id = c10::xpu::current_device()) {
+  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  return dev_prop->local_mem_size;
+}
+
 // ============================================================================
 // Block Count Calculation Utilities (from fbgemm_utils.h/sycl)
 // ============================================================================

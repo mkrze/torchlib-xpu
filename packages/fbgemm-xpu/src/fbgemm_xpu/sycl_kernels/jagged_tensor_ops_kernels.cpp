@@ -398,7 +398,7 @@ void jagged_dense_elementwise_jagged_output_(
       jagged_dense_elementwise_jagged_output_kernel_<int64_t, scalar_t, F>>(
       sycl::range<2>(wg_0 * wg_num, wg_1),
       sycl::range<2>(wg_0, wg_1),
-      at::xpu::getCurrentSYCLQueue(),
+      c10::xpu::getCurrentXPUStream().queue(),
       0,
       num_jagged_dim,
       x_values.packed_accessor32<scalar_t, 2, DefaultPtrTraits>(),
@@ -523,7 +523,7 @@ void jagged_dense_elementwise_dense_output_launch_(
       SimpleRetFirstFunctor2<scalar_t>>>(
       sycl::range<2>(wg_0 * wg_num, wg_1),
       sycl::range<2>(wg_0, wg_1),
-      at::xpu::getCurrentSYCLQueue(),
+      c10::xpu::getCurrentXPUStream().queue(),
       0,
       x_values,
       x_offsets,
@@ -980,7 +980,7 @@ void jagged_dense_elementwise_jagged_output_opt_(
             int64_t>>(
         sycl::range<1>(nbr_of_wg * wg_size),
         sycl::range<1>(wg_size),
-        at::xpu::getCurrentSYCLQueue(),
+        c10::xpu::getCurrentXPUStream().queue(),
         dynamic_smem_size,
         x_offsets[0].packed_accessor32<int64_t, 1, RestrictPtrTraits>(),
         t_rows_after_bs.packed_accessor32<int, 1, RestrictPtrTraits>(),
@@ -1001,7 +1001,7 @@ void jagged_dense_elementwise_jagged_output_opt_(
             F>>(
         sycl::range<2>(dim_0_1, dim_0_1 * nbr_of_wg_g),
         sycl::range<2>(dim_0_1, dim_0_1),
-        at::xpu::getCurrentSYCLQueue(),
+        c10::xpu::getCurrentXPUStream().queue(),
         0,
         output_values.packed_accessor32<c10::Half, 2, RestrictPtrTraits>(),
         x_values.packed_accessor32<c10::Half, 2, RestrictPtrTraits>(),
@@ -1035,7 +1035,7 @@ void jagged_dense_elementwise_jagged_output_opt_(
         F>>(
         sycl::range<2>(wg_0 * wg_num, wg_1),
         sycl::range<2>(wg_0, wg_1),
-        at::xpu::getCurrentSYCLQueue(),
+        c10::xpu::getCurrentXPUStream().queue(),
         0,
         num_jagged_dim,
         x_values.packed_accessor32<scalar_t, 2, RestrictPtrTraits>(),
