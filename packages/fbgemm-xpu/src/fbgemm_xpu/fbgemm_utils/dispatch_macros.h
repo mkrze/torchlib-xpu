@@ -155,4 +155,17 @@
       FBGEMM_DISPATCH_FLOATING_TYPES_CASE(__VA_ARGS__) \
           FBGEMM_DISPATCH_INTEGRAL_TYPES_CASE(__VA_ARGS__))
 
+#define FBGEMM_DISPATCH_FLOATING_TYPES(TYPE, NAME, ...) \
+  AT_DISPATCH_SWITCH(                                   \
+      TYPE, NAME, FBGEMM_DISPATCH_FLOATING_TYPES_CASE(__VA_ARGS__))
+
+#define FBGEMM_DISPATCH_FLOAT_AND_BFLOAT16_CASE(...)   \
+  AT_DISPATCH_CASE(at::ScalarType::Float, __VA_ARGS__) \
+  AT_DISPATCH_CASE(at::ScalarType::BFloat16, __VA_ARGS__)
+
+#define FBGEMM_DISPATCH_ALL_TYPES_BUT_HALF_CASE(...)      \
+  AT_DISPATCH_CASE(at::ScalarType::Float, __VA_ARGS__)    \
+  AT_DISPATCH_CASE(at::ScalarType::BFloat16, __VA_ARGS__) \
+  FBGEMM_DISPATCH_INTEGRAL_TYPES_CASE(__VA_ARGS__)
+
 // Add new dispatch families only together with a generated-host user.

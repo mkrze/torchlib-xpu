@@ -52,9 +52,16 @@ operators alongside the operators above. You can find their exact signature in
 - `asynchronous_exclusive_cumsum`
 - `asynchronous_inclusive_cumsum`
 - `block_bucketize_sparse_features_inference`
+- `dense_to_jagged`
+- `dense_to_jagged_forward`
 - `get_infos_metadata`
 - `invert_permute`
+- `jagged_2d_to_dense`
+- `jagged_dense_elementwise_add_jagged_output`
 - `jagged_index_select_2d_forward`
+- `jagged_to_padded_dense`
+- `jagged_to_padded_dense_backward`
+- `jagged_to_padded_dense_forward`
 - `permute_2D_sparse_preallocated_out`
 - `populate_bucketized_permute`
 - `reorder_batched_ad_indices`

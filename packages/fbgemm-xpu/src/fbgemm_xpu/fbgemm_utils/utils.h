@@ -163,6 +163,14 @@ inline uint32_t xpu_calc_xblock_count(int64_t num_items, int64_t threads_per_blo
   return xpu_calc_xblock_count_base(num_items, threads_per_block);
 }
 
+inline int64_t div_round_up(int64_t numerator, int64_t denominator) {
+    return (numerator + denominator - 1) / denominator;
+}
+
+inline int64_t round_down(int64_t value, int64_t multiple) {
+    return (value / multiple) * multiple;
+}
+
 /**
  * @brief Cap a work-group count so a launch's flattened work-item count fits
  * in an `int`.
