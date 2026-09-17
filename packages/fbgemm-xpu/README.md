@@ -25,7 +25,8 @@ operators, registered under the `torch.ops.fbgemm` namespace.
   - [`permute_1D_sparse_data`][op-permute_1D_sparse_data]
   - [`permute_2D_sparse_data`][op-permute_2D_sparse_data]
 
-* Training lookup operators supported through direct calls:
+* Training lookup operators supported through direct calls (see the
+  [FBGEMM TBE training documentation][fbgemm-tbe-training]):
 
   - `torch.ops.fbgemm.dense_embedding_codegen_lookup_function`: no-bag,
     unweighted lookup with dense autograd;
@@ -143,6 +144,7 @@ FBGEMM tests cover the existing non-lookup operators.
 [PVC]: https://www.intel.com/content/www/us/en/ark/products/series/232874/intel-data-center-gpu-max-series.html
 
 [fbgemm-sparse-ops]: https://docs.pytorch.org/FBGEMM/fbgemm_gpu/python-api/sparse_ops.html
+[fbgemm-tbe-training]: https://docs.pytorch.org/FBGEMM/fbgemm_gpu/python-api/tbe_ops_training.html
 [op-asynchronous_complete_cumsum]: https://docs.pytorch.org/FBGEMM/fbgemm_gpu/python-api/sparse_ops.html#torch.ops.fbgemm.asynchronous_complete_cumsum
 [op-permute_1D_sparse_data]: https://docs.pytorch.org/FBGEMM/fbgemm_gpu/python-api/sparse_ops.html#torch.ops.fbgemm.permute_1D_sparse_data
 [op-permute_2D_sparse_data]: https://docs.pytorch.org/FBGEMM/fbgemm_gpu/python-api/sparse_ops.html#torch.ops.fbgemm.permute_2D_sparse_data
