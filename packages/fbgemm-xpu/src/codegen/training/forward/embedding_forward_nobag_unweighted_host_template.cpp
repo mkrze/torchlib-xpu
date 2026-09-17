@@ -221,7 +221,7 @@ namespace fbgemm_xpu {
                     {%- if not dense %}
                     DISPATCH_KERNEL_FOR_CACHE_CASE(use_lxu_cache, [&] {
                         {%- endif %}
-                        const size_t local_x = kThreadGroupSize;{%- if dense %} {%- endif %}
+                        const size_t local_x = kThreadGroupSize;
 
                         const size_t local_y = kForwardMaxThreads / kThreadGroupSize;
                         const size_t grid_x_uncapped = div_round_up(static_cast<size_t>(total_B), local_y);
