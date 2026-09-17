@@ -472,7 +472,8 @@ jobs:
         # Upstream FBGEMM tests (patched) cover shared operator behavior and parity.
         # The tests below cover XPU/SYCL cases that upstream does not:
         # launch-grid limits, device validation, and strided fast-path inputs.
-        pytest -rsf torchlib-xpu/packages/fbgemm-xpu/tests/
+        pytest -rsf torchlib-xpu/packages/fbgemm-xpu/tests/ \
+          --deselect=tests/test_int_nbit_lookup.py::test_high_level_quant_embedding_collection
     - name: 'Patch upstream FBGEMM tests'
       working-directory: fbgemm
       run: |

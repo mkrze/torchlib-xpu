@@ -45,6 +45,15 @@ operators, registered under the `torch.ops.fbgemm` namespace.
   These lookup paths are currently validated in eager mode only. FakeTensor
   tracing and `torch.compile` are not supported.
 
+* Quantized inference lookup implementation:
+
+  - `torch.ops.fbgemm.int_nbit_split_embedding_codegen_lookup_function`:
+    eager, unweighted, no-bag INT4/INT8 with uniform dimensions and DEVICE
+    storage. CPU-prepared rows use FBGEMM 1.8.0 layout.
+  - See [quantized inference validation and build instructions](docs/quantized-inference.md).
+    XPU numerical parity and both high-level module smokes are pending; local
+    compiler checks are not runtime validation.
+
 The following operators are also implemented but do not constitute
 public documented FBGEMM API. These are extra variants, helpers, or utility
 operators alongside the operators above. You can find their exact signature in
