@@ -227,11 +227,7 @@ namespace fbgemm_xpu {
                         const size_t grid_x_uncapped = div_round_up(static_cast<size_t>(total_B), local_y);
                         const uint32_t grid_x = xpu_cap_grid_dim_x(
                             grid_x_uncapped, local_y * local_x);
-                        {%- if dense %}
 
-                        {%- else %}
-
-                        {%- endif %}
                         queue.submit([&](sycl::handler& cgh) {
                             cgh.parallel_for<{{ mdesc | capitalize }}EmbeddingNobagCodegenForwardUnweightedKernel<emb_t, cache_t, output_t, {%- if not dense %}use_cache_t, {%- endif %}index_t, kThreadGroupSize>>(
                                 sycl::nd_range<2>(
