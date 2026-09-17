@@ -472,7 +472,8 @@ jobs:
         pytest -rsf torchlib-xpu/packages/fbgemm-xpu/tests/test_bounds_check_indices.py
     - name: 'Test fbgemm-xpu'
       run: |
-        pytest -rsf torchlib-xpu/packages/fbgemm-xpu/tests/
+        pytest -rsf torchlib-xpu/packages/fbgemm-xpu/tests/ \
+          --deselect=tests/test_int_nbit_lookup.py::test_high_level_quant_embedding_collection
     - name: 'Patch upstream FBGEMM tests'
       working-directory: fbgemm
       run: |

@@ -40,8 +40,12 @@ def run_bounds_check(
     )
 
 
-@unittest.skipUnless(torch.xpu.is_available(), "XPU is required")
 class BoundsCheckIndicesXpuTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not torch.xpu.is_available():
+            raise RuntimeError("XPU validation requires a real device; no skip/fallback")
+
     def setUp(self) -> None:
         self.device = torch.accelerator.current_accelerator(
             check_available=True
