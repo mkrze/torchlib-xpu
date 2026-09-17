@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.18)
-
 # --------------------------------------------------------------------------
 # Sources: keep build inputs explicit so new files are reviewed when added.
 # Add new host and SYCL kernel .cpp files to host_sources as operators are
