@@ -53,6 +53,7 @@ operators alongside the operators above. You can find their exact signature in
 - `asynchronous_exclusive_cumsum`
 - `asynchronous_inclusive_cumsum`
 - `block_bucketize_sparse_features_inference`
+- `bounds_check_indices`
 - `dense_to_jagged`
 - `dense_to_jagged_forward`
 - `get_infos_metadata`
@@ -138,6 +139,9 @@ lookup operators on XPU. Instead, CI runs
 [`test_lookup_ops.py`](tests/test_lookup_ops.py), which calls the supported
 `torch.ops.fbgemm` methods directly on XPU. The separately patched upstream
 FBGEMM tests cover the existing non-lookup operators.
+
+* `bounds_check_indices` supports version 1. Version 2 and
+  `prefetch_pipeline=True` are not implemented on XPU.
 
 [FBGEMM]: https://github.com/pytorch/FBGEMM
 [uv]: https://github.com/astral-sh/uv

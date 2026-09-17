@@ -47,7 +47,25 @@ PyObject* PyInit__C(void) {
  * respective .cpp / .cu files.
  */
 TORCH_LIBRARY_FRAGMENT(fbgemm, m) {
-    // ===== Dense Embedding Operators =====
+    if (!utils::torch::schemaExists("fbgemm::bounds_check_indices")) {
+        m.def(
+            "bounds_check_indices("
+            "    Tensor rows_per_table, "
+            "    Tensor(a!) indices, "
+            "    Tensor(b!) offsets, "
+            "    int bounds_check_mode, "
+            "    Tensor(c!) warning, "
+            "    Tensor(d!)? weights=None, "
+            "    Tensor? B_offsets=None, "
+            "    SymInt max_B=-1, "
+            "    Tensor? b_t_map=None, "
+            "    int info_B_num_bits=-1, "
+            "    int info_B_mask=-1, "
+            "    int bounds_check_version=1, "
+            "    bool prefetch_pipeline=False"
+            ") -> ()"
+        );
+    }
 
     if (!utils::torch::schemaExists(
             "fbgemm::dense_embedding_codegen_lookup_function")) {
