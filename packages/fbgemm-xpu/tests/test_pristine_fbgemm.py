@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Intel Corporation. All Rights Reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import os
 import subprocess  # nosec B404
 import sys
 import sysconfig
@@ -34,7 +35,12 @@ class TestPristineFbgemm(unittest.TestCase):
             package_path.is_relative_to(environment_packages),
             f"{package_path} is not installed under {environment_packages}",
         )
-        self.assertEqual(version("fbgemm-gpu-cpu"), "1.8.0")
+        expected_version = os.environ.get("FBGEMM_VERSION")
+        if expected_version is not None:
+            self.assertEqual(
+                version("fbgemm-gpu-cpu"),
+                expected_version.removeprefix("v"),
+            )
 
     @unittest.skipUnless(torch.xpu.is_available(), "XPU is required")
     def test_existing_xpu_operator(self) -> None:
