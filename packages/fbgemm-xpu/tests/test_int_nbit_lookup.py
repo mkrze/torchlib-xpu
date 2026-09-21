@@ -1,6 +1,6 @@
 import importlib
 import importlib.metadata
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
@@ -14,7 +14,7 @@ BOUNDS = "fbgemm::bounds_check_indices"
 
 @pytest.fixture
 def fbgemm():
-    assert importlib.metadata.version("fbgemm-gpu-cpu") == "1.8.0"
+    assert importlib.metadata.version("fbgemm-gpu-cpu") == "1.8.0"  # nosec B101
     importlib.import_module("fbgemm_gpu")
     return importlib.import_module("fbgemm_gpu.split_table_batched_embeddings_ops_inference")
 
@@ -22,10 +22,10 @@ def fbgemm():
 @pytest.fixture
 def xpu(fbgemm):
     importlib.import_module("fbgemm_xpu")
-    assert torch.__version__.split("+")[0] == "2.13.0", torch.__version__
-    assert torch.xpu.is_available(), "XPU validation requires a real device; no skip/fallback"
+    assert torch.__version__.split("+")[0] == "2.13.0", torch.__version__  # nosec B101
+    assert torch.xpu.is_available(), "XPU validation requires a real device; no skip/fallback"  # nosec B101
     for operator in (LOOKUP, BOUNDS):
-        assert torch._C._dispatch_has_kernel_for_dispatch_key(operator, "XPU"), operator
+        assert torch._C._dispatch_has_kernel_for_dispatch_key(operator, "XPU"), operator  # nosec B101
     return torch.device("xpu:0")
 
 
@@ -39,8 +39,8 @@ def quantized_tables(bit_rates, dimension, row_counts):
         values = torch.sin(values * 0.13 + table) * 0.75 + torch.arange(rows)[:, None] * 0.1
         sparse_type = SparseType.INT4 if bit_rate == 4 else SparseType.INT8
         packed, scale_bias = quantize_embs(values.contiguous(), sparse_type)
-        assert packed.shape == (rows, dimension * bit_rate // 8)
-        assert scale_bias.shape == (rows, 4)
+        assert packed.shape == (rows, dimension * bit_rate // 8)  # nosec B101
+        assert scale_bias.shape == (rows, 4)  # nosec B101
         tables.append((packed.contiguous(), scale_bias.contiguous()))
     return tables
 
@@ -117,27 +117,27 @@ def assert_parity(arguments, tables, bit_rates, device):
     cpu_result = lookup(arguments)
     torch.testing.assert_close(cpu_result, expected, rtol=1e-5 if dtype == torch.float32 else 1e-2, atol=1e-6)
     xpu_result = lookup(to_xpu(arguments, device))
-    assert xpu_result.device.type == "xpu"
-    assert xpu_result.shape == expected.shape
-    assert torch.isfinite(xpu_result).all().item()
+    assert xpu_result.device.type == "xpu"  # nosec B101
+    assert xpu_result.shape == expected.shape  # nosec B101
+    assert torch.isfinite(xpu_result).all().item()  # nosec B101
     torch.testing.assert_close(xpu_result.cpu(), cpu_result, rtol=1e-5 if dtype == torch.float32 else 1e-2, atol=1e-6)
 
 
 def test_codegen_contract(tmp_path):
     source = Path(__file__).resolve().parents[1] / "src"
-    subprocess.run(
+    subprocess.run(  # nosec B603
         [sys.executable, str(source / "codegen/genscript/generate_forward_quantized.py"),
          "--opensource", "--install_dir", str(tmp_path)],
         check=True,
     )
     for bits in (4, 8):
         generated = (tmp_path / f"sycl_kernels/gen_embedding_forward_int{bits}_nobag.h").read_text()
-        assert f"lookup_int{bits}_nobag" in generated
-        assert "{{" not in generated and "{%" not in generated
-        assert f"& {(1 << bits) - 1}" in generated
-        assert "element += work_items" in generated
-        assert "error_ref.fetch_or(row_index < 0 ? 1 : 2)" in generated
-        assert generated.index("if (row_index < 0 || row_index >= storage_rows)") < generated.index(
+        assert f"lookup_int{bits}_nobag" in generated  # nosec B101
+        assert "{{" not in generated and "{%" not in generated  # nosec B101
+        assert f"& {(1 << bits) - 1}" in generated  # nosec B101
+        assert "element += work_items" in generated  # nosec B101
+        assert "error_ref.fetch_or(row_index < 0 ? 1 : 2)" in generated  # nosec B101
+        assert generated.index("if (row_index < 0 || row_index >= storage_rows)") < generated.index(  # nosec B101
             "const uint8_t* row = weights + row_index * row_stride"
         )
 
@@ -298,7 +298,7 @@ def test_valid_table_mapping_mutation(xpu, bits):
     initial = lookup(arguments).cpu()
     arguments["weights_offsets"].copy_(arguments["weights_offsets"].flip(0))
     expected = torch.cat((unpack_table(*tables[1], bits)[[0]], unpack_table(*tables[0], bits)[[4]]))
-    assert not torch.equal(initial, expected)
+    assert not torch.equal(initial, expected)  # nosec B101
     torch.testing.assert_close(lookup(arguments).cpu(), expected, rtol=1e-5, atol=1e-6)
 
 
@@ -333,8 +333,8 @@ class ObserveEmbeddingDispatch(TorchDispatchMode):
         return result
 
     def assert_xpu_calls(self):
-        assert (BOUNDS, "xpu") in self.calls, self.calls
-        assert (LOOKUP, "xpu") in self.calls, self.calls
+        assert (BOUNDS, "xpu") in self.calls, self.calls  # nosec B101
+        assert (LOOKUP, "xpu") in self.calls, self.calls  # nosec B101
 
 
 @pytest.mark.parametrize("bits", [4, 8])
@@ -373,8 +373,8 @@ def test_high_level_int_nbit(xpu, fbgemm, bits, dimension):
         with ObserveEmbeddingDispatch() as observed:
             actual = xpu_module(indices.to(xpu), offsets.to(xpu))
     observed.assert_xpu_calls()
-    assert actual.device.type == "xpu"
-    assert xpu_module.bounds_check_warning.item() == cpu_module.bounds_check_warning.item() > 0
+    assert actual.device.type == "xpu"  # nosec B101
+    assert xpu_module.bounds_check_warning.item() == cpu_module.bounds_check_warning.item() > 0  # nosec B101
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-5, atol=1e-6)
 
 
@@ -403,7 +403,7 @@ def test_high_level_quant_embedding_collection(xpu, bits, dimension):
                 for table, (packed, params) in enumerate(tables)
             },
         ).eval()
-        assert len(module.tbes) > 0
+        assert len(module.tbes) > 0  # nosec B101
         for tbe in module.tbes:
             tbe.bounds_check_mode_int = BoundsCheckMode.WARNING.value
             tbe.bounds_check_version = 1
@@ -423,9 +423,9 @@ def test_high_level_quant_embedding_collection(xpu, bits, dimension):
         with ObserveEmbeddingDispatch() as observed:
             actual = xpu_module(features(xpu))
     observed.assert_xpu_calls()
-    assert actual.keys() == expected.keys()
-    assert sum(tbe.bounds_check_warning.item() for tbe in xpu_module.tbes) > 0
+    assert actual.keys() == expected.keys()  # nosec B101
+    assert sum(tbe.bounds_check_warning.item() for tbe in xpu_module.tbes) > 0  # nosec B101
     for name in actual:
-        assert actual[name].values().device.type == "xpu"
+        assert actual[name].values().device.type == "xpu"  # nosec B101
         torch.testing.assert_close(actual[name].lengths().cpu(), expected[name].lengths())
         torch.testing.assert_close(actual[name].values().cpu(), expected[name].values(), rtol=1e-5, atol=1e-6)
