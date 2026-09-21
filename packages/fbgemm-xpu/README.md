@@ -51,8 +51,10 @@ operators, registered under the `torch.ops.fbgemm` namespace.
     eager, unweighted, no-bag INT4/INT8 with uniform dimensions and DEVICE
     storage. CPU-prepared rows use FBGEMM 1.8.0 layout.
   - See [quantized inference validation and build instructions](docs/quantized-inference.md).
-    XPU numerical parity and both high-level module smokes are pending; local
-    compiler checks are not runtime validation.
+    Direct CPU/XPU parity and the high-level IntNBit frontend are covered by
+    plugin CI. TorchRec QuantEmbeddingCollection has passed separate real-XPU
+    validation, but is not run by plugin CI because TorchRec is not installed
+    there.
 
 The following operators are also implemented but do not constitute
 public documented FBGEMM API. These are extra variants, helpers, or utility
