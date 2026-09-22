@@ -200,6 +200,39 @@ class BoundsCheckIndicesXpuTest(unittest.TestCase):
             WARNING,
         )
 
+    def test_zero_bag_terminal_offset_matches_cpu(self) -> None:
+        rows_per_table = torch.tensor([4], dtype=torch.int64)
+
+        for index_dtype in (torch.int32, torch.int64):
+            indices = torch.tensor([7], dtype=index_dtype)
+            offsets = torch.tensor([0], dtype=index_dtype)
+
+            for mode in (WARNING, IGNORE):
+                with self.subTest(index_dtype=index_dtype, mode=mode):
+                    self.assert_cpu_xpu_parity(
+                        rows_per_table,
+                        indices,
+                        offsets,
+                        mode,
+                    )
+
+            for device in (torch.device("cpu"), self.device):
+                with self.subTest(
+                    index_dtype=index_dtype,
+                    mode=FATAL,
+                    device=device.type,
+                ):
+                    with self.assertRaises(RuntimeError):
+                        run_bounds_check(
+                            rows_per_table.to(device),
+                            indices.to(device),
+                            offsets.to(device),
+                            FATAL,
+                            torch.zeros(
+                                1, device=device, dtype=torch.int64
+                            ),
+                        )
+
     def test_weighted_input_matches_cpu(self) -> None:
         self.assert_cpu_xpu_parity(
             torch.tensor([3], dtype=torch.int64),

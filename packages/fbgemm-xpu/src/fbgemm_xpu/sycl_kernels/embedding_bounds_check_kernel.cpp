@@ -28,7 +28,8 @@ sycl::event launch_bounds_check_offsets(sycl::queue &queue, at::Tensor &offsets,
                                         int64_t num_indices,
                                         BoundsCheckMode bounds_check_mode) {
   constexpr int64_t threads = 256;
-  const int64_t requested_groups = (total_B - 1) / threads + 1;
+  const int64_t requested_groups =
+      total_B == 0 ? 1 : (total_B - 1) / threads + 1;
   const uint32_t groups = xpu_cap_grid_dim_x(requested_groups, threads);
   auto kernel = BoundsCheckOffsetsKernel<index_t>(
       offsets.mutable_data_ptr<index_t>(), offsets.stride(0), total_B,
@@ -55,6 +56,24 @@ sycl::event launch_repair_bounds_check_offsets(
     cgh.parallel_for<RepairBoundsCheckOffsetsKernel<index_t>>(sycl::range<1>(1),
                                                               kernel);
   });
+}
+
+sycl::event validate_and_repair_bounds_check_offsets(
+    sycl::queue &queue, at::Tensor &offsets, at::Tensor &warning,
+    int64_t *offsets_invalid, int64_t *fatal_error, int64_t total_B,
+    int64_t num_indices, BoundsCheckMode bounds_check_mode) {
+  sycl::event repair_offsets_event;
+  AT_DISPATCH_INDEX_TYPES(
+      offsets.scalar_type(), "bounds_check_offsets_xpu_v1", [&] {
+        const sycl::event check_offsets_event =
+            launch_bounds_check_offsets<index_t>(
+                queue, offsets, warning, offsets_invalid, fatal_error, total_B,
+                num_indices, bounds_check_mode);
+        repair_offsets_event = launch_repair_bounds_check_offsets<index_t>(
+            queue, offsets, offsets_invalid, total_B, num_indices,
+            bounds_check_mode, check_offsets_event);
+      });
+  return repair_offsets_event;
 }
 
 template <typename index_t, bool vbe>
@@ -155,35 +174,39 @@ void bounds_check_indices_xpu(
       BoundsCheckMode::WARNING) {
     warning.zero_();
   }
-  if (T == 0 || total_B == 0) {
+  if (T == 0) {
     return;
   }
 
-  const bool vbe = B_offsets.has_value() && B_offsets->defined();
-  int64_t launch_max_B = 0;
-  if (vbe) {
-    TORCH_CHECK(B_offsets->dim() == 1,
-                "bounds_check_indices: B_offsets must be 1-dimensional");
-    TORCH_CHECK(B_offsets->scalar_type() == at::kInt,
-                "bounds_check_indices: B_offsets must have dtype int32");
-    TORCH_CHECK(B_offsets->numel() == T + 1,
-                "bounds_check_indices: B_offsets must have T + 1 elements");
-    TORCH_CHECK(max_B > 0,
-                "bounds_check_indices: max_B must be positive for VBE inputs");
-    launch_max_B = max_B;
-  } else {
-    const int64_t B = total_B / T;
-    TORCH_CHECK(total_B == B * T, "bounds_check_indices: offsets size ",
-                offsets.numel(), " is not equal to B * T + 1 for T=", T);
-    launch_max_B = B;
-  }
-
-  TORCH_CHECK(launch_max_B <= std::numeric_limits<int64_t>::max() / T,
-              "bounds_check_indices: max_B * T overflows int64");
   if (indices.scalar_type() == at::kInt) {
     TORCH_CHECK(indices.numel() <= std::numeric_limits<int32_t>::max(),
                 "bounds_check_indices: int32 indices cannot address ",
                 indices.numel(), " elements");
+  }
+
+  const bool vbe = B_offsets.has_value() && B_offsets->defined();
+  int64_t launch_max_B = 0;
+  if (total_B > 0) {
+    if (vbe) {
+      TORCH_CHECK(B_offsets->dim() == 1,
+                  "bounds_check_indices: B_offsets must be 1-dimensional");
+      TORCH_CHECK(B_offsets->scalar_type() == at::kInt,
+                  "bounds_check_indices: B_offsets must have dtype int32");
+      TORCH_CHECK(B_offsets->numel() == T + 1,
+                  "bounds_check_indices: B_offsets must have T + 1 elements");
+      TORCH_CHECK(
+          max_B > 0,
+          "bounds_check_indices: max_B must be positive for VBE inputs");
+      launch_max_B = max_B;
+    } else {
+      const int64_t B = total_B / T;
+      TORCH_CHECK(total_B == B * T, "bounds_check_indices: offsets size ",
+                  offsets.numel(), " is not equal to B * T + 1 for T=", T);
+      launch_max_B = B;
+    }
+
+    TORCH_CHECK(launch_max_B <= std::numeric_limits<int64_t>::max() / T,
+                "bounds_check_indices: max_B * T overflows int64");
   }
 
   // These v1 arguments are accepted to preserve the upstream schema but are
@@ -201,18 +224,24 @@ void bounds_check_indices_xpu(
     fatal_error = at::zeros({1}, warning.options());
     fatal_error_ptr = fatal_error.mutable_data_ptr<int64_t>();
   }
+
+  const sycl::event repair_offsets_event =
+      validate_and_repair_bounds_check_offsets(
+          queue, offsets, warning, offsets_invalid_ptr, fatal_error_ptr,
+          total_B, indices.numel(),
+          static_cast<BoundsCheckMode>(bounds_check_mode));
+
+  if (total_B == 0) {
+    if (fatal_error.defined()) {
+      TORCH_CHECK(
+          fatal_error.item<int64_t>() == 0,
+          "bounds_check_indices: out-of-bounds indices or offsets detected");
+    }
+    return;
+  }
+
   AT_DISPATCH_INDEX_TYPES(
       indices.scalar_type(), "bounds_check_indices_xpu_v1", [&] {
-        const sycl::event check_offsets_event =
-            launch_bounds_check_offsets<index_t>(
-                queue, offsets, warning, offsets_invalid_ptr, fatal_error_ptr,
-                total_B, indices.numel(),
-                static_cast<BoundsCheckMode>(bounds_check_mode));
-        const sycl::event repair_offsets_event =
-            launch_repair_bounds_check_offsets<index_t>(
-                queue, offsets, offsets_invalid_ptr, total_B, indices.numel(),
-                static_cast<BoundsCheckMode>(bounds_check_mode),
-                check_offsets_event);
         if (vbe) {
           launch_bounds_check_indices_v1<index_t, true>(
               queue, rows_per_table, indices, offsets, B_offsets, warning, T,
