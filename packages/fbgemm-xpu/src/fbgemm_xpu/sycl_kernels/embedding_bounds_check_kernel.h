@@ -26,6 +26,30 @@ enum class BoundsCheckMode : int64_t {
   IGNORE = 2,
 };
 
+struct BoundsCheckReporter {
+  int64_t *warning;
+  int64_t *fatal_error;
+
+  void warn_once() const {
+    if (xpuAtomicAdd(&warning[0], static_cast<int64_t>(1)) == 0) {
+#if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
+      static const __attribute__((opencl_constant)) char message[] =
+          "EmbeddingBoundsCheck: at least one out-of-bounds access was "
+          "corrected.\n";
+#else
+      static const char message[] =
+          "EmbeddingBoundsCheck: at least one out-of-bounds access was "
+          "corrected.\n";
+#endif
+      sycl::ext::oneapi::experimental::printf(message);
+    }
+  }
+
+  void set_fatal_error() const {
+    xpuAtomicAdd(&fatal_error[0], static_cast<int64_t>(1));
+  }
+};
+
 template <typename index_t> class BoundsCheckOffsetsKernel {
 public:
   BoundsCheckOffsetsKernel(index_t *offsets, int64_t offsets_stride,
@@ -34,8 +58,8 @@ public:
                            int64_t *fatal_error,
                            BoundsCheckMode bounds_check_mode)
       : offsets_(offsets), offsets_stride_(offsets_stride), total_B_(total_B),
-        num_indices_(num_indices), warning_(warning),
-        offsets_invalid_(offsets_invalid), fatal_error_(fatal_error),
+        num_indices_(num_indices), reporter_{warning, fatal_error},
+        offsets_invalid_(offsets_invalid),
         bounds_check_mode_(bounds_check_mode) {}
 
   void operator()(const sycl::nd_item<1> &item) const {
@@ -64,42 +88,18 @@ private:
   void mark_invalid() const {
     xpuAtomicAdd(&offsets_invalid_[0], static_cast<int64_t>(1));
     if (bounds_check_mode_ == BoundsCheckMode::FATAL) {
-      set_fatal_error();
+      reporter_.set_fatal_error();
     } else if (bounds_check_mode_ == BoundsCheckMode::WARNING) {
-      warn_once();
+      reporter_.warn_once();
     }
-  }
-
-  int64_t increment_warning() const {
-    return xpuAtomicAdd(&warning_[0], static_cast<int64_t>(1));
-  }
-
-  void warn_once() const {
-    if (increment_warning() == 0) {
-#if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
-      static const __attribute__((opencl_constant)) char message[] =
-          "EmbeddingBoundsCheck: at least one out-of-bounds access was "
-          "corrected.\n";
-#else
-      static const char message[] =
-          "EmbeddingBoundsCheck: at least one out-of-bounds access was "
-          "corrected.\n";
-#endif
-      sycl::ext::oneapi::experimental::printf(message);
-    }
-  }
-
-  void set_fatal_error() const {
-    xpuAtomicAdd(&fatal_error_[0], static_cast<int64_t>(1));
   }
 
   index_t *offsets_;
   int64_t offsets_stride_;
   int64_t total_B_;
   int64_t num_indices_;
-  int64_t *warning_;
+  BoundsCheckReporter reporter_;
   int64_t *offsets_invalid_;
-  int64_t *fatal_error_;
   BoundsCheckMode bounds_check_mode_;
 };
 
@@ -155,10 +155,9 @@ public:
         rows_per_table_stride_(rows_per_table_stride), indices_(indices),
         indices_stride_(indices_stride), offsets_(offsets),
         offsets_stride_(offsets_stride), B_offsets_(B_offsets),
-        B_offsets_stride_(B_offsets_stride), warning_(warning),
-        offsets_invalid_(offsets_invalid), fatal_error_(fatal_error), T_(T),
-        total_B_(total_B), max_B_(max_B),
-        bounds_check_mode_(bounds_check_mode) {}
+        B_offsets_stride_(B_offsets_stride), reporter_{warning, fatal_error},
+        offsets_invalid_(offsets_invalid), T_(T), total_B_(total_B),
+        max_B_(max_B), bounds_check_mode_(bounds_check_mode) {}
 
   void operator()(const sycl::nd_item<2> &item) const {
     const int64_t lane = item.get_local_id(1);
@@ -214,11 +213,11 @@ public:
         const bool out_of_bounds = idx < 0 || idx >= num_rows;
         if (bounds_check_mode_ == BoundsCheckMode::FATAL) {
           if (out_of_bounds) {
-            set_fatal_error();
+            reporter_.set_fatal_error();
           }
         } else if (out_of_bounds) {
           if (bounds_check_mode_ == BoundsCheckMode::WARNING) {
-            warn_once();
+            reporter_.warn_once();
           }
           indices_[position * indices_stride_] = 0;
         }
@@ -227,29 +226,6 @@ public:
   }
 
 private:
-  int64_t increment_warning() const {
-    return xpuAtomicAdd(&warning_[0], static_cast<int64_t>(1));
-  }
-
-  void warn_once() const {
-    if (increment_warning() == 0) {
-#if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
-      static const __attribute__((opencl_constant)) char message[] =
-          "EmbeddingBoundsCheck: at least one out-of-bounds access was "
-          "corrected.\n";
-#else
-      static const char message[] =
-          "EmbeddingBoundsCheck: at least one out-of-bounds access was "
-          "corrected.\n";
-#endif
-      sycl::ext::oneapi::experimental::printf(message);
-    }
-  }
-
-  void set_fatal_error() const {
-    xpuAtomicAdd(&fatal_error_[0], static_cast<int64_t>(1));
-  }
-
   const int64_t *rows_per_table_;
   int64_t rows_per_table_stride_;
   index_t *indices_;
@@ -258,9 +234,8 @@ private:
   int64_t offsets_stride_;
   const int32_t *B_offsets_;
   int64_t B_offsets_stride_;
-  int64_t *warning_;
+  BoundsCheckReporter reporter_;
   const int64_t *offsets_invalid_;
-  int64_t *fatal_error_;
   int64_t T_;
   int64_t total_B_;
   int64_t max_B_;
