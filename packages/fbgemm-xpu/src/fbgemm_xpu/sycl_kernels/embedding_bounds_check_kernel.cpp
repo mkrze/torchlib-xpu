@@ -6,13 +6,12 @@
 
 #include "embedding_bounds_check_kernel.h"
 
-#include <algorithm>
 #include <limits>
-#include <string_view>
 
-#include <c10/core/DeviceGuard.h>
 #include <c10/xpu/XPUStream.h>
 #include <torch/library.h>
+
+#include "fbgemm_utils/tensor_utils.h"
 
 namespace fbgemm_xpu {
 namespace {
@@ -20,23 +19,6 @@ namespace {
 constexpr int64_t kWarpSize = 32;
 constexpr int64_t kWarpsPerGroup = 8;
 constexpr int64_t kThreadsPerGroup = kWarpSize * kWarpsPerGroup;
-
-void check_xpu_tensor(const at::Tensor &tensor, std::string_view name,
-                      const at::Device &expected_device) {
-  TORCH_CHECK(tensor.device().type() == at::DeviceType::XPU,
-              "bounds_check_indices: ", name, " must be an XPU tensor");
-  TORCH_CHECK(tensor.device() == expected_device,
-              "bounds_check_indices: ", name, " must be on ", expected_device,
-              ", got ", tensor.device());
-}
-
-void check_optional_xpu_tensor(const std::optional<at::Tensor> &tensor,
-                               std::string_view name,
-                               const at::Device &expected_device) {
-  if (tensor.has_value() && tensor->defined()) {
-    check_xpu_tensor(*tensor, name, expected_device);
-  }
-}
 
 template <typename index_t>
 sycl::event launch_bounds_check_offsets(sycl::queue &queue, at::Tensor &offsets,
@@ -47,8 +29,7 @@ sycl::event launch_bounds_check_offsets(sycl::queue &queue, at::Tensor &offsets,
                                         BoundsCheckMode bounds_check_mode) {
   constexpr int64_t threads = 256;
   const int64_t requested_groups = (total_B - 1) / threads + 1;
-  const int64_t max_groups = std::numeric_limits<int32_t>::max() / threads;
-  const int64_t groups = std::min(requested_groups, max_groups);
+  const uint32_t groups = xpu_cap_grid_dim_x(requested_groups, threads);
   auto kernel = BoundsCheckOffsetsKernel<index_t>(
       offsets.mutable_data_ptr<index_t>(), offsets.stride(0), total_B,
       num_indices, warning.mutable_data_ptr<int64_t>(), offsets_invalid,
@@ -86,10 +67,8 @@ void launch_bounds_check_indices_v1(
     const sycl::event &repair_offsets_event) {
   const int64_t logical_warps = max_B * T;
   const int64_t requested_groups = (logical_warps - 1) / kWarpsPerGroup + 1;
-  const int64_t max_groups =
-      std::numeric_limits<int32_t>::max() / kThreadsPerGroup;
-  const int64_t groups =
-      std::max<int64_t>(1, std::min(requested_groups, max_groups));
+  const uint32_t groups =
+      xpu_cap_grid_dim_x(requested_groups, kThreadsPerGroup);
 
   auto kernel = BoundsCheckIndicesKernelV1<index_t, vbe>(
       rows_per_table.const_data_ptr<int64_t>(), rows_per_table.stride(0),
@@ -133,14 +112,11 @@ void bounds_check_indices_xpu(
       "bounds_check_indices: bounds_check_mode=", bounds_check_mode,
       " is not supported");
 
-  const at::Device device = rows_per_table.device();
-  check_xpu_tensor(rows_per_table, "rows_per_table", device);
-  check_xpu_tensor(indices, "indices", device);
-  check_xpu_tensor(offsets, "offsets", device);
-  check_xpu_tensor(warning, "warning", device);
-  check_optional_xpu_tensor(weights, "weights", device);
-  check_optional_xpu_tensor(B_offsets, "B_offsets", device);
-  check_optional_xpu_tensor(b_t_map, "b_t_map", device);
+  TENSORS_ON_SAME_SYCL_XPU_IF_NOT_OPTIONAL(rows_per_table, indices, offsets,
+                                           warning, B_offsets, b_t_map);
+  if (weights.has_value() && weights->defined()) {
+    TENSORS_EMPTY_OR_ON_SAME_DEVICE(weights.value(), rows_per_table);
+  }
 
   TORCH_CHECK(rows_per_table.dim() == 1,
               "bounds_check_indices: rows_per_table must be 1-dimensional");
@@ -174,7 +150,7 @@ void bounds_check_indices_xpu(
 
   const int64_t T = rows_per_table.numel();
   const int64_t total_B = offsets.numel() - 1;
-  c10::DeviceGuard device_guard(device);
+  SYCL_DEVICE_GUARD(rows_per_table);
   if (static_cast<BoundsCheckMode>(bounds_check_mode) ==
       BoundsCheckMode::WARNING) {
     warning.zero_();

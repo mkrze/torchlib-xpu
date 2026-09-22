@@ -209,6 +209,41 @@ class BoundsCheckIndicesXpuTest(unittest.TestCase):
             weights=torch.tensor([0.25, 0.5, 0.75], dtype=torch.float32),
         )
 
+    def test_weights_device_contract(self) -> None:
+        for weights_device in (torch.device("cpu"), self.device):
+            with self.subTest(weights_device=weights_device.type):
+                indices = torch.tensor(
+                    [0], device=self.device, dtype=torch.int64
+                )
+                run_bounds_check(
+                    torch.tensor(
+                        [2], device=self.device, dtype=torch.int64
+                    ),
+                    indices,
+                    torch.tensor(
+                        [0, 1], device=self.device, dtype=torch.int64
+                    ),
+                    WARNING,
+                    torch.zeros(
+                        1, device=self.device, dtype=torch.int64
+                    ),
+                    weights=torch.empty(0, device=weights_device),
+                )
+                torch.xpu.synchronize()
+                self.assertEqual(indices.item(), 0)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "must be empty or a XPU tensor"
+        ):
+            run_bounds_check(
+                torch.tensor([2], device=self.device, dtype=torch.int64),
+                torch.tensor([0], device=self.device, dtype=torch.int64),
+                torch.tensor([0, 1], device=self.device, dtype=torch.int64),
+                WARNING,
+                torch.zeros(1, device=self.device, dtype=torch.int64),
+                weights=torch.ones(1),
+            )
+
     def test_variable_batch_matches_cpu(self) -> None:
         rows_per_table = torch.tensor([3, 2], dtype=torch.int64)
         B_offsets = torch.tensor([0, 1, 3], dtype=torch.int32)

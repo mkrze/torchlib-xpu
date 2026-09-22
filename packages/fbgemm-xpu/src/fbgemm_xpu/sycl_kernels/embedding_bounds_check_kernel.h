@@ -15,6 +15,8 @@
 #include <ATen/ATen.h>
 #include <c10/macros/Macros.h>
 
+#include "fbgemm_utils/utils.h"
+
 namespace fbgemm_xpu {
 
 // Values are part of FBGEMM's public bounds_check_indices contract.
@@ -60,11 +62,7 @@ public:
 
 private:
   void mark_invalid() const {
-    sycl::atomic_ref<int64_t, sycl::memory_order::relaxed,
-                     sycl::memory_scope::device,
-                     sycl::access::address_space::global_space>
-        invalid_ref(offsets_invalid_[0]);
-    invalid_ref.store(1);
+    xpuAtomicAdd(&offsets_invalid_[0], static_cast<int64_t>(1));
     if (bounds_check_mode_ == BoundsCheckMode::FATAL) {
       set_fatal_error();
     } else if (bounds_check_mode_ == BoundsCheckMode::WARNING) {
@@ -73,11 +71,7 @@ private:
   }
 
   int64_t increment_warning() const {
-    sycl::atomic_ref<int64_t, sycl::memory_order::relaxed,
-                     sycl::memory_scope::device,
-                     sycl::access::address_space::global_space>
-        warning_ref(warning_[0]);
-    return warning_ref.fetch_add(1);
+    return xpuAtomicAdd(&warning_[0], static_cast<int64_t>(1));
   }
 
   void warn_once() const {
@@ -96,11 +90,7 @@ private:
   }
 
   void set_fatal_error() const {
-    sycl::atomic_ref<int64_t, sycl::memory_order::relaxed,
-                     sycl::memory_scope::device,
-                     sycl::access::address_space::global_space>
-        error_ref(fatal_error_[0]);
-    error_ref.store(1);
+    xpuAtomicAdd(&fatal_error_[0], static_cast<int64_t>(1));
   }
 
   index_t *offsets_;
@@ -238,11 +228,7 @@ public:
 
 private:
   int64_t increment_warning() const {
-    sycl::atomic_ref<int64_t, sycl::memory_order::relaxed,
-                     sycl::memory_scope::device,
-                     sycl::access::address_space::global_space>
-        warning_ref(warning_[0]);
-    return warning_ref.fetch_add(1);
+    return xpuAtomicAdd(&warning_[0], static_cast<int64_t>(1));
   }
 
   void warn_once() const {
@@ -261,11 +247,7 @@ private:
   }
 
   void set_fatal_error() const {
-    sycl::atomic_ref<int64_t, sycl::memory_order::relaxed,
-                     sycl::memory_scope::device,
-                     sycl::access::address_space::global_space>
-        error_ref(fatal_error_[0]);
-    error_ref.store(1);
+    xpuAtomicAdd(&fatal_error_[0], static_cast<int64_t>(1));
   }
 
   const int64_t *rows_per_table_;
