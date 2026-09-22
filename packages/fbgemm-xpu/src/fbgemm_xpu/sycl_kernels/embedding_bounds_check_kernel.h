@@ -212,7 +212,8 @@ public:
       const index_t indices_end = offsets_[(b_t + 1) * offsets_stride_];
 
       const index_t L = indices_end - indices_start;
-      for (int64_t i = lane; i < static_cast<int64_t>(L); i += kWarpSize) {
+      const int64_t lane_stride = item.get_local_range(1);
+      for (int64_t i = lane; i < static_cast<int64_t>(L); i += lane_stride) {
         const int64_t position = static_cast<int64_t>(indices_start) + i;
         const index_t idx = indices_[position * indices_stride_];
         if (idx == static_cast<index_t>(-1)) {
@@ -266,8 +267,6 @@ private:
         error_ref(fatal_error_[0]);
     error_ref.store(1);
   }
-
-  static constexpr int64_t kWarpSize = 32;
 
   const int64_t *rows_per_table_;
   int64_t rows_per_table_stride_;
