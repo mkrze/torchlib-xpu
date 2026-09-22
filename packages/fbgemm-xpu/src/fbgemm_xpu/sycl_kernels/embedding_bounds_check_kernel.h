@@ -4,6 +4,40 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+////////////////////////////////////////////////////////////////////////////////
+// SYCL PORT MAPPING TO FBGEMM CUDA SOURCE - EMBEDDING BOUNDS CHECK V1
+////////////////////////////////////////////////////////////////////////////////
+//
+// ORIGINAL CUDA SOURCE:
+//   File: fbgemm_gpu/codegen/utils/embedding_bounds_check_v1.cu
+//   Kernel: bounds_check_indices_kernel_v1<index_t, vbe>
+//
+// CPU CORRECTNESS REFERENCE:
+//   File: fbgemm_gpu/codegen/utils/embedding_bounds_check_host_cpu.cpp
+//   Function: bounds_check_indices_cpu
+//
+// KERNEL MAPPING:
+//   BoundsCheckIndicesKernelV1<index_t, vbe>
+//     -> bounds_check_indices_kernel_v1<index_t, vbe> (CUDA)
+//
+// XPU-SPECIFIC OFFSET PHASES:
+//   BoundsCheckOffsetsKernel
+//     -> terminal/bag offset validation from bounds_check_indices_kernel_v1
+//   RepairBoundsCheckOffsetsKernel
+//     -> CPU-ordered offset repair extracted from the CUDA v1 kernel
+//
+// DESIGN NOTES:
+//   - Offset validation, ordered repair, and index validation are separate
+//     submissions with explicit event dependencies.
+//   - Ordered repair avoids concurrent writes to shared adjacent offsets.
+//   - FATAL uses a device error flag consumed by the host instead of a device
+//     assert, preserving XPU context usability after the exception.
+//   - The capped launch grid-strides over logical bags and keeps the flattened
+//     SYCL range within DPC++'s signed-int ID limit.
+//   - Only bounds-check version 1 is implemented.
+//
+////////////////////////////////////////////////////////////////////////////////
+
 #pragma once
 
 #include <algorithm>

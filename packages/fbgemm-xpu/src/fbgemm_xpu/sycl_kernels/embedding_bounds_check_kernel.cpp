@@ -4,6 +4,32 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+////////////////////////////////////////////////////////////////////////////////
+// SYCL PORT MAPPING TO FBGEMM CUDA SOURCE - EMBEDDING BOUNDS CHECK V1 HOST
+////////////////////////////////////////////////////////////////////////////////
+//
+// ORIGINAL CUDA SOURCES:
+//   Host:   fbgemm_gpu/codegen/utils/embedding_bounds_check_host.cpp
+//   Kernel: fbgemm_gpu/codegen/utils/embedding_bounds_check_v1.cu
+//
+// HOST FUNCTION MAPPING:
+//   bounds_check_indices_xpu
+//     -> bounds_check_indices_cuda
+//     -> _bounds_check_indices_cuda_v1
+//
+// LAUNCH MAPPING:
+//   launch_bounds_check_indices_v1<index_t, vbe>
+//     -> FBGEMM_LAUNCH_DSA_KERNEL(bounds_check_indices_kernel_v1<...>)
+//
+// XPU DEVIATIONS:
+//   - Offset validation and repair are split out and ordered before the index
+//     kernel; see embedding_bounds_check_kernel.h for the kernel-level map.
+//   - Grid size is capped for DPC++ and paired with grid-stride coverage.
+//   - FATAL reports through a device flag and host TORCH_CHECK rather than a
+//     device-side assert.
+//
+////////////////////////////////////////////////////////////////////////////////
+
 #include "embedding_bounds_check_kernel.h"
 
 #include <limits>
