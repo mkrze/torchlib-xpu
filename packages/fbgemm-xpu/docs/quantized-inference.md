@@ -1,21 +1,20 @@
-# PTXPULIB-151/150 Quantized Inference Track
+# Quantized INT4/INT8 XPU Inference Track
 
 ## Status and ownership
 
-2026-09-17: supported-version wheel build and CPU/XPU numerical validation PASS
-on DUT1013PVC (`gta@10.211.176.215`), using only `xpu:0`. This is a small-table
-correctness milestone, not a performance result or full-model validation.
+2026-09-23: the branch was rebuilt on the current `intel/main` after PR #131
+merged. A supported-version cp312 wheel build, the full plugin test selection,
+CPU/XPU numerical validation, and both high-level frontend smokes pass on BMG.
+This is a correctness milestone, not a full-model accuracy or performance
+claim.
 
-The kernel track uses the isolated worktree below; the GR baseline is maintained
-in its separate inference worktree. No TorchRec or FBGEMM source changes or
-site-packages patches were needed for the kernel track. The built
-wheel was installed into the dedicated remote smoke venv, leaving the existing
-Torch 2.14 environment and host drivers untouched.
+No TorchRec or FBGEMM source changes or site-packages patches are needed for the
+kernel track. TorchRec is supplied read-only through `PYTHONPATH` only for the
+four collection smoke cases that plugin CI intentionally deselects.
 
-- Worktree: `/home/mkrzemie/repos/torchrec/torchlib-xpu-mkrze/mlperf-dlrmv3-inference-kernels`
-- Branch: `ptxpulib-150-quantized-inference-lookup`
-- PR127 base: `f55d8f5b75077be906053573ae0c5091e33f994b`
-- Bounds integration commit: `4b87d3e`
+- Current `intel/main` (merged PR #131): `b59acf9742a1a6b3d4fb7cb05bc87acb9b5de820`
+- Quantized lookup commit after rebase: `94bb034`
+- Validated branch head before this documentation update: `4a9f86a`
 - `intel`: `https://github.com/intel/torchlib-xpu.git`
 - `origin`: `https://github.com/mkrze/torchlib-xpu.git`
 
@@ -23,21 +22,18 @@ Torch 2.14 environment and host drivers untouched.
 
 | Source | Exact ref / SHA |
 | --- | --- |
-| Fetched `intel/main` | `e7fd1e2f362df085fbecbd6da94071b73befb1ad` |
-| Fetched `intel` PR127, `refs/pull/127/head` | `f55d8f5b75077be906053573ae0c5091e33f994b` |
-| Fetched `origin/ptxpulib-151-bounds-check-indices` | `cbb733ce24a23daa5ff74bf647cb145f306c243d` |
-| Replayed 151 implementation | `2d42203db4974439f9a4617e0486d459fad1df21` |
+| Fetched `intel/main` with merged PR #131 | `b59acf9742a1a6b3d4fb7cb05bc87acb9b5de820` |
+| PR #132 lookup implementation after rebase | `94bb034` |
+| PR #132 Bandit follow-up after rebase | `80c0c92` |
+| PR #132 README follow-up after rebase | `4a9f86a` |
 | Read-only FBGEMM `v1.8.0` tag object | `f349896c8439444889a49e695807503e8ac68bbf` |
 | Read-only FBGEMM `v1.8.0^{}` source commit | `99a76f4ed785d2d00579eae5fd45440a1242d657` |
-| Read-only TorchRec frontend API reference | `9cbd52b079323914185e02f7913a10e7d1349f25` |
+| Read-only TorchRec smoke source | `3d85f3c988ba2c6e809482aeb901ffc89b1defea` |
 
-PR127 is a descendant of the fetched main: their merge base is the main SHA
-above. The worktree was created directly at the PR127 commit. The 151 source was
-applied with `git cherry-pick --no-commit`, with current-PR127 resolutions in
-README, CMake and the operator registry. Its kernel and test paths have no
-later changes on the fetched 151 branch. That replay is preserved in the
-dedicated integration commit `4b87d3e`, with 150 committed separately above it.
-The reproduction manifest in the GR fork pins the final tested kernel SHA.
+PR #131 was squash-merged as `b59acf9`; its tree is identical to the reviewed
+PR head. PR #132 now contains only its three rebased code/review commits and
+this documentation follow-up. Relative to `intel/main`, it does not modify
+either bounds kernel file.
 
 ## Implementation contract
 
@@ -66,10 +62,12 @@ The reproduction manifest in the GR fork pins the final tested kernel SHA.
   a scalar status. Nonempty calls retain two blocking host reads (metadata and
   error status), down from six. There is no mutable-tensor metadata cache.
   This is not a fully asynchronous operator: synchronous exceptions still wait
-  for device completion. Bounds v1 remains enabled and unchanged.
+  for device completion. Bounds v1 is provided by merged PR #131; this branch
+  does not modify its kernel files.
 - Raw lookup checks physical storage bounds. It cannot infer the true logical
-  row count from padding at the end of a table: frontends must call 151 bounds
-  checking with real `rows_per_table`. Direct lookup does not invoke 151 itself.
+  row count from padding at the end of a table: frontends must call the bounds
+  checker from merged PR #131 with real `rows_per_table`. Direct lookup does
+  not invoke the bounds checker itself.
 - Unsupported inputs fail with explicit errors: pooling, weighted lookup,
   nonempty cache/UVM, non-DEVICE placement, other storage/output types, mixed D,
   malformed metadata/offsets, and negative/pruned indices (including `-1`).
@@ -83,11 +81,11 @@ All containers used `--network none` and had no GPU device mounts.
 
 - Generator and focused test Ruff checks: PASS.
 - `test_codegen_contract`: 1 passed, 104 deselected. This tests generation only.
-- Collection: 105 quantized tests total. Explicit plugin-CI deselection leaves
-  101 cases and deselects the four TorchRec-dependent collection smokes.
+- Collection: 127 quantized tests total. Explicit plugin-CI deselection leaves
+  123 cases and deselects the four TorchRec-dependent collection smokes.
 - Exact parsed dispatcher schema versus pinned v1.8 source: PASS.
 - IntNBit constructor keyword arguments versus pinned v1.8 source: PASS.
-- Generated headers, instantiated host/kernel templates, and replayed 151 bounds
+- Generated headers, instantiated host/kernel templates, and dependent bounds
   kernel SYCL syntax: PASS.
 - INT4/INT8 host and device code compiled to a generic `spir64` object: PASS.
 - Editor diagnostics and Python test syntax: no reported errors.
@@ -120,8 +118,8 @@ python -m ruff check packages/fbgemm-xpu/tests/test_int_nbit_lookup.py \
 
 ## Required build environment
 
-The validated environment is `~/mlperf-dlrmv3-xpu-smoke/venv` on DUT1013PVC.
-The existing `~/xpu_smoke` Torch 2.14 venv remains untouched.
+Current validation uses an isolated Python 3.12 / Torch 2.13 environment on an
+Intel Arc Pro B60 (BMG).
 
 Use a separate build environment with oneAPI `icpx` compatible with Torch 2.13
 (the repository documents 2026.0), Python >=3.10, Torch `2.13.0+xpu`,
@@ -153,23 +151,23 @@ Runs were serialized on one logical XPU. These tests never skip unavailable XPU
 or silently use CPU. Missing dependencies, missing dispatch, all-skipped runs,
 and a high-level frontend failure are not successes.
 
+- Revision: `4a9f86a`, based on current `intel/main` `b59acf9`.
 - Runtime: Python 3.12.3, Torch 2.13.0+xpu, FBGEMM CPU 1.8.0.
 - TorchRec source: `3d85f3c988ba2c6e809482aeb901ffc89b1defea`, via PYTHONPATH.
-- Compiler: existing `fbgemm-xpu-dev:latest`, oneAPI 2026.1.1; mounted venv and
-  host Python 3.12 development headers read-only. No GPU used during compilation.
+- Compiler image: `pytorch/manylinux2_28-builder:xpu-v2.13.0-rc1`; no GPU was
+  used during compilation.
 - Wheel: `fbgemm_xpu-0.8.0-cp312-cp312-linux_x86_64.whl`.
-- SHA256: `19c6309a3a248742266f111b7736712bef99193e72c35227b179e28841719a5d`.
-- Import, XPU dispatcher registration and pip check: PASS.
-- Bounds: 12 tests and 22 subtests PASS.
-- Original int_nbit suite: 105 tests PASS, including all high-level TorchRec cases.
-- Optimized lookup: 127 int_nbit tests plus 12 bounds tests PASS (139 total),
-  including mutated metadata, error recovery and late grid-stride invalid IDs.
-- Optimized wheel SHA256:
-  `23d50001dc90e172857be413a607c020fe4246c7e00d0be658d711ff7c2d3114`.
-- CPU packed-layout/generator preflight: five tests PASS before GPU validation.
-- Target logs: `~/mlperf-dlrmv3-xpu-smoke/logs/{bounds-unit,intnbit-unit}.log`.
-- Build script and complete run evidence are in the GR inference worktree under
-  `scripts/mlperf-dlrm-v3-xpu/` and `docs/dlrm-v3-xpu/logs/inference/2026-09-17/`.
+- SHA256: `4c6a0b0971a207428f821ad12fe40cfc64a01692ae6c608b3bc234bd05e15166`.
+- Import and both XPU dispatcher registrations: PASS.
+- Full plugin suite with the exact CI deselection: 335 passed, 9 skipped,
+  4 deselected, 36 subtests passed. All skips require two XPU devices.
+- Separate TorchRec QuantEmbeddingCollection smoke: 4 passed.
+- Local generator contract, Ruff, Bandit, schema/ancestry checks and
+  `git diff --check`: PASS.
+- Pod-wide `pip check` is not evidence for this run: the supplied pod has a
+  pre-existing `torchvision 0.26.0+xpu` requirement for Torch 2.11 while the pod
+  runtime is Torch 2.13. Tests used an isolated plugin environment with an
+  explicit `torch.__version__ == "2.13.0+xpu"` gate.
 
 ```bash
 python -m pytest packages/fbgemm-xpu/tests/test_int_nbit_lookup.py \
@@ -184,7 +182,7 @@ python -m pytest packages/fbgemm-xpu/tests/test_int_nbit_lookup.py \
 ```
 
 Direct cases cover D=4/512, both index widths, three output types, empty inputs,
-empty bags/tables, boundary/repeated IDs, padded rows/tables, multiple/shared
+empty bags, boundary/repeated IDs, padded rows/tables, multiple/shared
 tables, invalid/unsupported inputs, and work beyond the capped grid. Numerical
 tests compare explicit dequantization, CPU FBGEMM lookup, and XPU output from
 identical packed bytes; tolerances are fixed in the tests.
@@ -203,13 +201,12 @@ yet been reproduced on the target environment. If pristine frontends fail,
 report the exact error to the owner before considering a separate FBGEMM source
 branch. No speculative frontend patch is part of this worktree.
 
-## Difference from the published 151 branch
+## Relationship to the merged bounds checker
 
-The two `embedding_bounds_check_kernel` source files are byte-identical to
-`origin/ptxpulib-151-bounds-check-indices` at `cbb733c`. The integration commit
-`4b87d3e` replays 151 onto PR127, adapting CMake, registration, README and CI.
-The original published 151 branch is not rewritten. Its test now fails instead
-of skipping when XPU is unavailable; no bounds algorithm or mode changed.
+PR #131 is merged into the base as `b59acf9`. Relative to that base, PR #132
+does not modify either `embedding_bounds_check_kernel` file. It changes the
+bounds test only so an explicitly selected XPU suite fails instead of skipping
+when hardware is unavailable.
 
 ## Measured lookup optimization
 
