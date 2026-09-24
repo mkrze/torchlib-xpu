@@ -13,6 +13,10 @@ The implementation is used by FBGEMM
 `IntNBitTableBatchedEmbeddingBagsCodegen` and by TorchRec quantized embedding
 collections when their tables and inputs are placed on XPU.
 
+This page complements the
+[FBGEMM TBE inference API documentation](https://docs.pytorch.org/FBGEMM/fbgemm_gpu/python-api/tbe_ops_inference.html)
+by describing the XPU-specific support boundary.
+
 INT4 and INT8 kernels are generated from a shared Jinja2 SYCL template during
 the package build.
 
@@ -28,6 +32,7 @@ The XPU lookup supports:
 - embedding dimensions that are positive multiples of four;
 - int32 or int64 indices and offsets;
 - FP32, FP16, or BF16 output;
+- output shape `[indices.numel(), D]`;
 - row alignment that is a power of two from 1 through 128 (default 16).
 
 The dimension boundary matches the documented FBGEMM IntNBit frontend
@@ -106,7 +111,8 @@ The implementation does not support:
 - pooled (`SUM` or `MEAN`) or weighted lookup;
 - cache/UVM-backed tables;
 - pruning or index remapping;
+- variable-batch embeddings (VBE);
 - mixed embedding dimensions;
 - INT2, FP8, FP16, or FP32 weight storage;
 - `torch.compile` or FakeTensor execution;
-- distributed/multi-device execution.
+- distributed sharding and multi-tile execution are not validated.
