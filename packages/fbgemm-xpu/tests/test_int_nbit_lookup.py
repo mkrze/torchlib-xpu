@@ -137,12 +137,15 @@ def test_codegen_contract(tmp_path):
     for bits in (4, 8):
         generated = (tmp_path / f"sycl_kernels/gen_embedding_forward_int{bits}_nobag.h").read_text()
         assert f"lookup_int{bits}_nobag" in generated  # nosec B101
+        assert f"class LookupInt{bits}NobagKernel" in generated  # nosec B101
+        assert "void operator()(const sycl::nd_item<1>& item) const" in generated  # nosec B101
+        assert f"queue.parallel_for<LookupInt{bits}NobagKernel<index_t, output_t>>" in generated  # nosec B101
         assert "{{" not in generated and "{%" not in generated  # nosec B101
         assert f"& {(1 << bits) - 1}" in generated  # nosec B101
-        assert "element += work_items" in generated  # nosec B101
+        assert "element += work_items_" in generated  # nosec B101
         assert "error_ref.fetch_or(row_index < 0 ? 1 : 2)" in generated  # nosec B101
-        assert generated.index("if (row_index < 0 || row_index >= storage_rows)") < generated.index(  # nosec B101
-            "const uint8_t* row = weights + row_index * row_stride"
+        assert generated.index("if (row_index < 0 || row_index >= storage_rows_)") < generated.index(  # nosec B101
+            "const uint8_t* row = weights_ + row_index * row_stride_"
         )
 
 
