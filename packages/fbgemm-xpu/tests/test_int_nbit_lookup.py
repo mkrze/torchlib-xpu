@@ -140,6 +140,9 @@ def test_codegen_contract(tmp_path):
         assert f"class LookupInt{bits}NobagKernel" in generated  # nosec B101
         assert "void operator()(const sycl::nd_item<1>& item) const" in generated  # nosec B101
         assert f"queue.parallel_for<LookupInt{bits}NobagKernel<index_t, output_t>>" in generated  # nosec B101
+        assert "SPDX-License-Identifier: BSD-3-Clause" in generated  # nosec B101
+        assert "SYCL PORT MAPPING TO FBGEMM CUDA SOURCE" in generated  # nosec B101
+        assert "embedding_forward_quantized_split_nbit_kernel_template.cu" in generated  # nosec B101
         assert "{{" not in generated and "{%" not in generated  # nosec B101
         assert f"& {(1 << bits) - 1}" in generated  # nosec B101
         assert "element += work_items_" in generated  # nosec B101

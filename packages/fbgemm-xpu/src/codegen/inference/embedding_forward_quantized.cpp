@@ -1,3 +1,42 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+ * Copyright (c) 2026 Intel Corporation. All Rights Reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+////////////////////////////////////////////////////////////////////////////////
+// SYCL PORT MAPPING TO FBGEMM CUDA SOURCE - QUANTIZED INFERENCE LOOKUP HOST
+////////////////////////////////////////////////////////////////////////////////
+//
+// ORIGINAL CUDA SOURCES:
+//   Public dispatcher:
+//     fbgemm_gpu/codegen/inference/embedding_forward_quantized_host.cpp
+//   Generated no-bag host launcher:
+//     fbgemm_gpu/codegen/inference/
+//       embedding_forward_quantized_split_nbit_host_template.cu
+//   Generated CUDA kernel:
+//     fbgemm_gpu/codegen/inference/
+//       embedding_forward_quantized_split_nbit_kernel_template.cu
+//
+// HOST FUNCTION MAPPING:
+//   int_nbit_lookup
+//     -> int_nbit_split_embedding_codegen_lookup_function (CUDA dispatcher)
+//     -> int_nbit_split_embedding_nobag_codegen_forward_unweighted_cuda_impl
+//        (generated CUDA no-bag launcher)
+//
+// INTENTIONAL XPU SUBSET AND STRUCTURAL DIFFERENCES:
+//   - Supports eager, unweighted, no-bag INT4/INT8 DEVICE lookup with a
+//     uniform embedding dimension and FP32/FP16/BF16 output.
+//   - Preserves int32 and int64 indices instead of converting the no-bag path
+//     to int32 as the pinned CUDA dispatcher does.
+//   - Packs device table metadata into one host transfer for validation and
+//     launch setup, then reduces physical-storage errors to one device flag.
+//   - Submits one named lookup functor per table. The CUDA launcher includes
+//     the table dimension in its grid; multi-table fusion is tracked as a
+//     separate performance optimization and measured in the package docs.
+//
+////////////////////////////////////////////////////////////////////////////////
+
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <c10/core/DeviceGuard.h>

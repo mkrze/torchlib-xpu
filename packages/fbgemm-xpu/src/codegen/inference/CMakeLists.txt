@@ -1,3 +1,6 @@
+# Copyright (c) 2026 Intel Corporation. All Rights Reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+
 set(INFERENCE_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 set(INFERENCE_HEADERS
     ${INFERENCE_GEN_DIR}/sycl_kernels/gen_embedding_forward_int4_nobag.h

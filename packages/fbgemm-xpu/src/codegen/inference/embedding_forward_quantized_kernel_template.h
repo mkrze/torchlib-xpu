@@ -1,3 +1,38 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+ * Copyright (c) 2026 Intel Corporation. All Rights Reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+////////////////////////////////////////////////////////////////////////////////
+// SYCL PORT MAPPING TO FBGEMM CUDA SOURCE - INT4/INT8 NO-BAG LOOKUP
+////////////////////////////////////////////////////////////////////////////////
+//
+// ORIGINAL CUDA SOURCE:
+//   Template:
+//     fbgemm_gpu/codegen/inference/
+//       embedding_forward_quantized_split_nbit_kernel_template.cu
+//   Generated kernels:
+//     INT4_split_embedding_nobag_codegen_forward_unweighted_kernel_small_L
+//     INT8_split_embedding_nobag_codegen_forward_unweighted_kernel_small_L
+//
+// KERNEL MAPPING:
+//   LookupInt4NobagKernel
+//     -> INT4_split_embedding_nobag_codegen_forward_unweighted_kernel_small_L
+//   LookupInt8NobagKernel
+//     -> INT8_split_embedding_nobag_codegen_forward_unweighted_kernel_small_L
+//
+// INTENTIONAL XPU SUBSET AND STRUCTURAL DIFFERENCES:
+//   - Uses one work-item per output element and scalar packed-value loads,
+//     rather than the CUDA warp-per-bag vectorized kernel.
+//   - Supports DEVICE placement, unweighted no-bag lookup, prefix FP16
+//     scale/bias parameters, and uniform dimensions only.
+//   - Uses a capped one-dimensional launch with a grid-stride loop.
+//   - Reports negative or physical out-of-storage rows through a device error
+//     bitmask instead of a device assertion.
+//
+////////////////////////////////////////////////////////////////////////////////
+
 #pragma once
 
 #include <algorithm>
