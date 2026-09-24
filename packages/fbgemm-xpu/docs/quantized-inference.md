@@ -220,6 +220,31 @@ enabled, one table, D=512, FP32 output. Medians in milliseconds:
 | INT8 | 256 | 1.343 | 0.199 |
 | INT8 | 32768 | 2.032 | 1.475 |
 
+### Multi-table launch scaling
+
+The current implementation submits one lookup kernel per table. A BMG sweep
+held the total work fixed at 4096 indices, `D=128`, FP32 output and 256 physical
+rows per table while varying only the table count. Values below are medians
+from 30 measured calls after 10 warmups:
+
+| Type | Tables | Wall time (ms) | XPU event time (ms) |
+| --- | ---: | ---: | ---: |
+| INT4 | 1 | 1.393 | 0.466 |
+| INT4 | 8 | 1.875 | 0.638 |
+| INT4 | 32 | 1.958 | 0.811 |
+| INT4 | 64 | 1.980 | 0.871 |
+| INT4 | 128 | 1.761 | 1.114 |
+| INT8 | 1 | 1.791 | 0.692 |
+| INT8 | 8 | 2.053 | 0.738 |
+| INT8 | 32 | 2.175 | 0.875 |
+| INT8 | 64 | 2.167 | 0.971 |
+| INT8 | 128 | 2.547 | 1.398 |
+
+The per-table launch overhead is measurable but did not make wall time scale
+linearly with the number of tables in this sweep. From one to 128 tables, the
+absolute wall-time increase was 0.37 ms for INT4 and 0.76 ms for INT8. A fused
+multi-table launch remains a possible follow-up optimization.
+
 These are local exploratory timings, not MLPerf results or a statistical
 performance guarantee. The integrated small model did not speed up: INT4
 13.44 -> 13.83 ms, INT8 13.67 -> 14.24 ms. Dense/HSTU and runtime launch costs
