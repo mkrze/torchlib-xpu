@@ -172,6 +172,11 @@ at::Tensor int_nbit_lookup(
     const auto* placements = types + tables;
     const auto* boundaries = placements + tables;
     const int64_t dimension = int64_t(dims[1]) - dims[0];
+    // The pinned FBGEMM IntNBit frontend documents embedding dimensions as
+    // multiples of four, and its inference tests align every generated D to at
+    // least that boundary. Keep the direct XPU entry point within the same
+    // supported contract even though this scalar kernel and row padding could
+    // represent some narrower byte-packed layouts.
     TORCH_CHECK(dims[0] == 0 && dimension > 0 && dimension % 4 == 0,
                 op_name, "D must be positive and divisible by four");
     TORCH_CHECK(total_D.expect_int() == dims[tables], op_name, "total_D disagrees with D_offsets");

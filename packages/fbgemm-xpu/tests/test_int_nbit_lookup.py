@@ -176,6 +176,23 @@ def test_direct_parity(xpu, bit_rates, dimension, index_dtype, output_dtype):
 
 
 @pytest.mark.parametrize("bits", [4, 8])
+@pytest.mark.parametrize("dimension", [2, 6])
+def test_rejects_dimension_outside_frontend_contract(xpu, bits, dimension):
+    arguments, _ = lookup_args(
+        [bits, bits], 4, [5, 5], torch.tensor([0, 1]), torch.tensor([0, 1, 2]),
+    )
+    arguments = to_xpu(arguments, xpu)
+    arguments["D_offsets"] = (
+        torch.arange(3, dtype=torch.int32, device=xpu) * dimension
+    )
+    arguments["total_D"] = 2 * dimension
+    arguments["max_int4_D"] = dimension if bits == 4 else 0
+    arguments["max_int8_D"] = dimension if bits == 8 else 0
+    with pytest.raises(RuntimeError, match="divisible by four"):
+        lookup(arguments)
+
+
+@pytest.mark.parametrize("bits", [4, 8])
 @pytest.mark.parametrize("offset_values", [[0], [0, 0, 0, 0, 0], [0, 0, 0, 1, 2]])
 def test_empty_inputs_and_tables(xpu, bits, offset_values):
     indices = torch.tensor([0, 4][:offset_values[-1]], dtype=torch.int32)

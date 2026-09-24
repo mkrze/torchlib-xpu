@@ -45,7 +45,10 @@ either bounds kernel file.
   It does not reuse training algorithms or add an autograd path.
 - `PoolingMode.NONE`, no weights per index, INT4/INT8 storage, uniform positive
   D divisible by four; one or multiple tables, including reordered/shared
-  physical tables and a mixture of INT4/INT8 table types at the same D.
+  physical tables and a mixture of INT4/INT8 table types at the same D. The
+  four-element boundary preserves the documented FBGEMM IntNBit frontend
+  contract; it is a supported-subset decision rather than a scalar-load or row
+  padding requirement of the XPU kernel.
 - FP32, FP16 and BF16 output. Indices/offsets independently support int32/int64.
   Used tensors must be contiguous, one-dimensional and on the same XPU.
 - A row begins with little-endian FP16 scale and bias (four bytes), then unsigned
