@@ -17,12 +17,17 @@ namespace {
 
 constexpr std::string_view op_name = "int_nbit_split_embedding_codegen_lookup_function: ";
 
-void check_tensor(const at::Tensor& tensor, at::ScalarType dtype,
-                  const at::Device& device, std::string_view name) {
+void check_tensor_layout(const at::Tensor& tensor, const at::Device& device,
+                         std::string_view name) {
     TORCH_CHECK(tensor.device() == device, op_name, name, " must be on ", device);
-    TORCH_CHECK(tensor.scalar_type() == dtype, op_name, name, " has unsupported dtype");
     TORCH_CHECK(tensor.dim() == 1 && tensor.is_contiguous(), op_name, name,
                 " must be contiguous and one-dimensional");
+}
+
+void check_tensor(const at::Tensor& tensor, at::ScalarType dtype,
+                  const at::Device& device, std::string_view name) {
+    check_tensor_layout(tensor, device, name);
+    TORCH_CHECK(tensor.scalar_type() == dtype, op_name, name, " has unsupported dtype");
 }
 
 void check_empty(const std::optional<at::Tensor>& tensor, std::string_view name) {
@@ -85,8 +90,8 @@ at::Tensor int_nbit_lookup(
                 op_name, "indices must have int32 or int64 dtype");
     TORCH_CHECK(offsets.scalar_type() == at::kInt || offsets.scalar_type() == at::kLong,
                 op_name, "offsets must have int32 or int64 dtype");
-    check_tensor(indices, indices.scalar_type(), device, "indices");
-    check_tensor(offsets, offsets.scalar_type(), device, "offsets");
+    check_tensor_layout(indices, device, "indices");
+    check_tensor_layout(offsets, device, "offsets");
     const int64_t tables = weights_offsets.numel();
     TORCH_CHECK(tables > 0 && weights_tys.numel() == tables &&
                     weights_placements.numel() == tables && D_offsets.numel() == tables + 1,
