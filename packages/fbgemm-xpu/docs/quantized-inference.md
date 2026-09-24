@@ -87,12 +87,12 @@ uv pip install -e "packages/fbgemm-xpu[test]" \
 Run the direct and FBGEMM frontend tests on a machine with an available XPU:
 
 ```bash
-pytest -rsf packages/fbgemm-xpu/tests/test_int_nbit_lookup.py \
-  --deselect=tests/test_int_nbit_lookup.py::test_high_level_quant_embedding_collection
+pytest -rsf packages/fbgemm-xpu/tests/test_int_nbit_lookup.py
 ```
 
 The TorchRec collection integration test requires a compatible TorchRec
-installation and can be run separately:
+installation. It is skipped automatically when TorchRec is unavailable and can
+be selected explicitly after installing it:
 
 ```bash
 pytest -rsf packages/fbgemm-xpu/tests/test_int_nbit_lookup.py \

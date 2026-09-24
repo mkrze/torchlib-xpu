@@ -53,8 +53,8 @@ operators, registered under the `torch.ops.fbgemm` namespace.
   - See [quantized inference support details](docs/quantized-inference.md).
     Direct CPU/XPU parity and the high-level IntNBit frontend are covered by
     plugin CI. TorchRec QuantEmbeddingCollection has passed separate real-XPU
-    validation, but is not run by plugin CI because TorchRec is not installed
-    there.
+    validation; its test is collected by plugin CI and skipped automatically
+    when TorchRec is not installed.
 
 The following operators are also implemented but do not constitute
 public documented FBGEMM API. These are extra variants, helpers, or utility

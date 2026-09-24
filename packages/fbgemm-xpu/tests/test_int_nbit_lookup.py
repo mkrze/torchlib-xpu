@@ -4,6 +4,7 @@
 
 import importlib
 import importlib.metadata
+import importlib.util
 import subprocess  # nosec B404
 import sys
 from pathlib import Path
@@ -405,6 +406,10 @@ def test_high_level_int_nbit(xpu, fbgemm, bits, dimension):
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-5, atol=1e-6)
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("torchrec") is None,
+    reason="TorchRec is not installed",
+)
 @pytest.mark.parametrize("bits", [4, 8])
 @pytest.mark.parametrize("dimension", [4, 512])
 def test_high_level_quant_embedding_collection(xpu, bits, dimension):
