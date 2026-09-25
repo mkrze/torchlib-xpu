@@ -142,11 +142,14 @@ The lookup operators do not currently support:
 - global weight decay (GWD);
 - cache-backed lookup.
 
-The FBGEMM high-level training frontend does not expose `ComputeDevice.XPU`.
-Constructing
+The pristine FBGEMM 1.8.0 high-level training frontend does not expose
+`ComputeDevice.XPU`. Constructing
 `SplitTableBatchedEmbeddingBagsCodegen` for XPU is therefore unavailable in
-this release. Training lookup support is limited to the direct
-`torch.ops.fbgemm` entry points listed above.
+this release. The upstream high-level TBE tests therefore do not exercise these
+lookup operators on XPU. Instead, CI runs
+[`test_lookup_ops.py`](tests/test_lookup_ops.py), which calls the supported
+`torch.ops.fbgemm` methods directly on XPU. The separately patched upstream
+FBGEMM tests cover the existing non-lookup operators.
 
 `bounds_check_indices` implements version 1 only. Version 2 and
 `prefetch_pipeline=True` are not implemented on XPU.
