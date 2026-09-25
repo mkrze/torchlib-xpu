@@ -50,8 +50,11 @@ operators, registered under the `torch.ops.fbgemm` namespace.
   - `torch.ops.fbgemm.int_nbit_split_embedding_codegen_lookup_function`:
     eager, unweighted, no-bag INT4/INT8 with uniform dimensions and DEVICE
     storage. CPU-prepared rows use the FBGEMM packed INT4/INT8 layout.
-  - For more details, see the
-    [quantized inference documentation](docs/quantized-inference.md).
+  - Supports positive dimensions divisible by four, int32/int64 indices and
+    offsets, FP32/FP16/BF16 output shaped `[indices.numel(), D]`, and
+    power-of-two row alignment from 1 through 128 (default 16).
+  - Does not support pruning/index remapping, mixed dimensions, `torch.compile`,
+    or FakeTensor execution.
 
 The following operators are also implemented but do not constitute
 public documented FBGEMM API. These are extra variants, helpers, or utility
@@ -139,14 +142,11 @@ The lookup operators do not currently support:
 - global weight decay (GWD);
 - cache-backed lookup.
 
-The pristine FBGEMM 1.8.0 high-level training frontend does not expose
-`ComputeDevice.XPU`. Constructing
+The FBGEMM high-level training frontend does not expose `ComputeDevice.XPU`.
+Constructing
 `SplitTableBatchedEmbeddingBagsCodegen` for XPU is therefore unavailable in
-this release. The upstream high-level TBE tests therefore do not exercise these
-lookup operators on XPU. Instead, CI runs
-[`test_lookup_ops.py`](tests/test_lookup_ops.py), which calls the supported
-`torch.ops.fbgemm` methods directly on XPU. The separately patched upstream
-FBGEMM tests cover the existing non-lookup operators.
+this release. Training lookup support is limited to the direct
+`torch.ops.fbgemm` entry points listed above.
 
 `bounds_check_indices` implements version 1 only. Version 2 and
 `prefetch_pipeline=True` are not implemented on XPU.
