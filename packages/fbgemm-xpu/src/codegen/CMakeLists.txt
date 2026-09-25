@@ -212,3 +212,5 @@ target_link_options(_C_training PRIVATE
 )
 
 install(TARGETS _C_training DESTINATION fbgemm_xpu)
+
+add_subdirectory(inference)
