@@ -50,11 +50,8 @@ operators, registered under the `torch.ops.fbgemm` namespace.
   - `torch.ops.fbgemm.int_nbit_split_embedding_codegen_lookup_function`:
     eager, unweighted, no-bag INT4/INT8 with uniform dimensions and DEVICE
     storage. CPU-prepared rows use the FBGEMM packed INT4/INT8 layout.
-  - See [quantized inference support details](docs/quantized-inference.md).
-    Direct CPU/XPU parity and the high-level IntNBit frontend are covered by
-    plugin CI. TorchRec QuantEmbeddingCollection has passed separate real-XPU
-    validation; its test is collected by plugin CI and skipped automatically
-    when TorchRec is not installed.
+  - For more details, see the
+    [quantized inference documentation](docs/quantized-inference.md).
 
 The following operators are also implemented but do not constitute
 public documented FBGEMM API. These are extra variants, helpers, or utility
