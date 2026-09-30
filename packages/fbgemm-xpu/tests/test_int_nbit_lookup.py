@@ -406,6 +406,57 @@ def test_high_level_int_nbit(xpu, fbgemm, bits, dimension):
     torch.testing.assert_close(actual.cpu(), expected, rtol=1e-5, atol=1e-6)
 
 
+@pytest.mark.parametrize("bits", [4, 8])
+def test_shared_streaming_tables_on_nondefault_stream(xpu, fbgemm, bits):
+    from fbgemm_gpu.split_embedding_configs import SparseType
+    from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
+        BoundsCheckMode,
+        EmbeddingLocation,
+        PoolingMode,
+    )
+
+    row_counts = [257, 128, 193]
+    tables = quantized_tables([bits] * 3, 512, row_counts)
+    weight_type = SparseType.INT4 if bits == 4 else SparseType.INT8
+
+    def make_module(device):
+        module = fbgemm.IntNBitTableBatchedEmbeddingBagsCodegen(
+            embedding_specs=[
+                (f"table_{table}", rows, 512, weight_type,
+                 EmbeddingLocation.HOST if device.type == "cpu" else EmbeddingLocation.DEVICE)
+                for table, rows in enumerate(row_counts)
+            ],
+            feature_table_map=[0, 2, 1, 0, 1],
+            device=device,
+            weight_lists=[(packed.clone(), params.clone()) for packed, params in tables],
+            pooling_mode=PoolingMode.NONE,
+            output_dtype=SparseType.FP32,
+            bounds_check_mode=BoundsCheckMode.WARNING,
+            row_alignment=16,
+        ).eval()
+        module.bounds_check_version = 1
+        return module
+
+    reference = make_module(torch.device("cpu"))
+    target = make_module(xpu)
+    indices = torch.tensor([0, 256, 192, 127, 256, 0, 127], dtype=torch.int64)
+    offsets = torch.tensor([0, 2, 3, 4, 6, 7], dtype=torch.int64)
+    stream = torch.xpu.Stream(device=xpu)
+    stream.wait_stream(torch.xpu.current_stream(xpu))
+    with torch.no_grad():
+        expected = reference(indices, offsets)
+        with torch.xpu.stream(stream), ObserveEmbeddingDispatch() as observed:
+            actual = target(indices.to(xpu), offsets.to(xpu))
+            consumed = actual.clone()
+        stream.synchronize()
+    observed.assert_xpu_calls()
+    torch.testing.assert_close(consumed.cpu(), expected, rtol=1e-5, atol=1e-6)
+    torch.testing.assert_close(consumed[0], consumed[5])
+    torch.testing.assert_close(consumed[1], consumed[4])
+    if target.bounds_check_warning.item() != 0 or reference.bounds_check_warning.item() != 0:
+        pytest.fail("Valid shared-table inputs must not require bounds correction")
+
+
 @pytest.mark.skipif(
     importlib.util.find_spec("torchrec") is None,
     reason="TorchRec is not installed",
