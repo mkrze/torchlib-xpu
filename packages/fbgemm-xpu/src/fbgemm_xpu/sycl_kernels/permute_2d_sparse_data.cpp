@@ -31,6 +31,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "permute_2d_sparse_data.h"
+#include "fbgemm_utils/utils.h"
 #include "sparse_async_cumsum.h"
 
 namespace fbgemm_xpu {
@@ -126,6 +127,7 @@ permute_2D_sparse_preallocated_out_xpu(
     const std::optional<at::Tensor>& permuted_lengths_out,
     const std::optional<at::Tensor>& permuted_indices_out,
     const std::optional<at::Tensor>& permuted_weights_out) {
+    SYCL_DEVICE_GUARD(lengths);
 
     // Device validation
     TORCH_INTERNAL_ASSERT(

@@ -41,6 +41,8 @@
 #include <torch/all.h>
 #include <torch/library.h>
 
+#include "fbgemm_utils/utils.h"
+
 // FBGEMM dispatch macros (not available in all environments; define inline)
 #ifndef FBGEMM_DISPATCH_FLOAT_AND_DOUBLE_CASE
 #define FBGEMM_DISPATCH_FLOAT_AND_DOUBLE_CASE(...)     \
@@ -1037,6 +1039,7 @@ block_bucketize_sparse_features_xpu(
         const bool keep_orig_idx,
         const std::optional<at::Tensor>& total_num_blocks,
         const std::optional<at::Tensor>& keep_orig_idx_per_feature) {
+    SYCL_DEVICE_GUARD(lengths);
     auto [nl, ni, nw, np, up, _] = _block_bucketize_sparse_features_xpu(
         lengths, indices, bucketize_pos, sequence, block_sizes,
         total_num_blocks, my_size, weights, batch_size_per_feature,
@@ -1066,6 +1069,7 @@ block_bucketize_sparse_features_inference_xpu(
         const bool keep_orig_idx,
         const std::optional<at::Tensor>& total_num_blocks,
         const std::optional<at::Tensor>& keep_orig_idx_per_feature) {
+    SYCL_DEVICE_GUARD(lengths);
     return _block_bucketize_sparse_features_xpu(
         lengths, indices, bucketize_pos, sequence, block_sizes,
         total_num_blocks, my_size, weights, batch_size_per_feature,
@@ -1081,6 +1085,7 @@ static at::Tensor populate_bucketized_permute_xpu(
         const at::Tensor& lengths,
         const at::Tensor& bucketized_lengths,
         const at::Tensor& bucket_mapping) {
+    SYCL_DEVICE_GUARD(lengths);
     const auto lengths_contig = lengths.expect_contiguous();
     const auto bucketized_lengths_contig = bucketized_lengths.expect_contiguous();
     const auto bucket_mapping_contig = bucket_mapping.expect_contiguous();
