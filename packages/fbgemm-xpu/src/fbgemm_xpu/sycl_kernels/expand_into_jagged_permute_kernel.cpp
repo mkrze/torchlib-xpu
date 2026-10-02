@@ -22,6 +22,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "expand_into_jagged_permute_kernel.h"
+#include "fbgemm_utils/utils.h"
 
 namespace fbgemm_xpu {
 
@@ -75,6 +76,7 @@ at::Tensor expand_into_jagged_permute_xpu(
     const at::Tensor& input_offsets,
     const at::Tensor& output_offsets,
     int64_t output_size) {
+    SYCL_DEVICE_GUARD(permute);
     // Device validation
     TORCH_INTERNAL_ASSERT(
         permute.device().type() == at::DeviceType::XPU,
