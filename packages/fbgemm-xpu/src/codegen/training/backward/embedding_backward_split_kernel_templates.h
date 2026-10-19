@@ -597,7 +597,7 @@ namespace fbgemm_xpu {
         // Setup shared memory for gradient accumulation
         const int32_t grad_sum_stride = max_D_ / VEC_WIDTH;
         auto* smem_grad_sum = kUseVecBlocking
-            ? reinterpret_cast<Vec4TAcc<cache_t>*>(smem_.get_pointer().get())
+            ? reinterpret_cast<Vec4TAcc<cache_t>*>(smem_.template get_multi_ptr<sycl::access::decorated::no>().get())
                 + threadIdx_y * grad_sum_stride
             : nullptr;
 
@@ -913,7 +913,7 @@ namespace fbgemm_xpu {
         const int32_t max_vecs =
             kUseVecBlocking ? max_vecs_per_thread_ : kFixedMaxVecsPerThread;
         auto* smem_grad_sum = reinterpret_cast<Vec4TAcc<cache_t>*>(
-            smem_.get_pointer().get()
+            smem_.template get_multi_ptr<sycl::access::decorated::no>().get()
         ) + warp_id * max_vecs * kThreadGroupSize;
 
         for (auto long_run_id = blockIdx_x; long_run_id < num_long_runs; long_run_id += gridDim_x) {
