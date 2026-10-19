@@ -13,6 +13,7 @@ set(host_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/dense_to_jagged_forward.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/embedding_bounds_check_kernel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/expand_into_jagged_permute_kernel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/hstu_attention_fwd.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/invert_permute_kernel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/jagged_dense_elementwise_add_jagged_output.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sycl_kernels/jagged_dense_elementwise_mul_backward.cpp
