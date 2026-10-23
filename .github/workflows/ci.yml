@@ -495,6 +495,8 @@ jobs:
       working-directory: fbgemm
       run: |
         git am ../torchlib-xpu/packages/fbgemm-xpu/patches/0001-Add-XPU-support-to-fbgemm-tests.patch
+        git am ../torchlib-xpu/packages/fbgemm-xpu/patches/0003-Add-XPU-support-to-fbgemm-permute-indices-tests.patch
+        # The benchmark patch goes last: the check below inspects the last commit.
         git am ../torchlib-xpu/packages/fbgemm-xpu/patches/0002-Add-XPU-support-to-fbgemm-jagged-benchmark.patch
         unexpected=$(git diff --name-only "$FBGEMM_VERSION" HEAD | grep -vE '^fbgemm_gpu/(test|bench)/' || true)
         if [ -n "$unexpected" ]; then
@@ -523,6 +525,7 @@ jobs:
         pytest -rsf fbgemm_gpu/test/sparse/cumsum_test.py
         pytest -rsf fbgemm_gpu/test/sparse/misc_ops_test.py
         pytest -rsf fbgemm_gpu/test/sparse/permute_sparse_features_test.py
+        pytest -rsf fbgemm_gpu/test/sparse/permute_indices_test.py
         pytest -rsf fbgemm_gpu/test/sparse/reorder_batched_test.py
         pytest -rsf fbgemm_gpu/test/tbe/utils/generate_vbe_metadata_test.py
         pytest -rsf fbgemm_gpu/test/tbe/utils/split_embeddings_utils_test.py
