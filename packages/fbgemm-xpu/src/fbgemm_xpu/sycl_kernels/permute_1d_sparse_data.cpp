@@ -168,7 +168,6 @@ permute_1D_sparse_data_xpu(
 
     // Input validation
     TORCH_CHECK(permute.dim() == 1, "permute must be 1D");
-    TORCH_CHECK(lengths.dim() == 1, "lengths must be 1D");
     TORCH_CHECK(indices.dim() == 1, "indices must be 1D");
     TORCH_CHECK(permute.dtype() == at::kInt, "permute must be int32");
 
@@ -176,7 +175,9 @@ permute_1D_sparse_data_xpu(
 
     // Ensure contiguous
     const auto permute_contig = permute.contiguous();
-    const auto lengths_contig = lengths.contiguous();
+    // lengths may have any shape, e.g. [T, B]; it is read flattened, as on CPU
+    // and CUDA.
+    const auto lengths_contig = lengths.contiguous().view(-1);
     const auto indices_contig = indices.contiguous();
 
     const int64_t permuted_lengths_size = permute.numel();
