@@ -464,7 +464,7 @@ at::Tensor reorder_batched_ad_lengths_xpu(
 //   Allocates the reordered indices tensor and selects the kernel the same way
 //   the CUDA reference does: the narrow broadcast kernels for
 //   `broadcast_indices && T <= 320 && B < 64` (specialised further on B == 1),
-//   otherwise the general ReorderBatchedAdIndicesKernel.
+//   otherwise the general ReorderBatchedAdIndicesVecKernel.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
