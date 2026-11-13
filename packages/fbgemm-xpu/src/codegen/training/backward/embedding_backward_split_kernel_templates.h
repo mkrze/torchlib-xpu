@@ -420,7 +420,7 @@ namespace fbgemm_xpu {
             acc_t weight_norm = sycl::sqrt(
                 sycl::reduce_over_group(sg, weight_sum_square, sycl::plus<acc_t>{}));
 
-            // Clip gradient if norm exceeds max_norm
+            // Scale the updated weights down if their norm exceeds max_norm
             acc_t clip_factor = 1.0;
             if (threadIdx_x == 0 && weight_norm > max_norm) {
                 clip_factor = max_norm / (weight_norm + 1e-8);
