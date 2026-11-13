@@ -19,17 +19,23 @@
 // given by seq_offsets. There is no softmax, so key blocks accumulate
 // independently.
 //
-// Each sub-group of 16 work-items owns 8 query rows of one (sequence, head):
-// Q stays in joint_matrix A tiles, S = Q K^T and O += P V run on XMX
-// (joint_matrix_mad), the masks and SiLU are applied on the accumulator with
-// element coordinates, and joint_matrix_copy turns S into the A operand of P V.
-// For fp16, S goes through a tile in local memory instead: joint_matrix_copy
-// from the float accumulator to an fp16 A tile gives zeros on BMG (head dim
-// 64, DPC++ 2026.1), while S itself and P V are right.
+// Each sub-group of 16 work-items owns MT query tiles of 8 rows of one (sequence,
+// head): two for bf16, so that every K^T and V tile it loads feeds two products,
+// with 256 registers per thread; one for fp16. Q stays in joint_matrix A tiles,
+// S = Q K^T and O += P V run on XMX (joint_matrix_mad), the masks and SiLU are
+// applied on the accumulator with element coordinates, and joint_matrix_copy
+// turns S into the A operand of P V. For fp16, S goes through a tile in local
+// memory instead: joint_matrix_copy from the float accumulator to an fp16 A tile
+// gives zeros on BMG (head dim 64, DPC++ 2026.1), while S itself and P V are right.
+// The K^T and V tiles of the next key block are prefetched to L1, and target rows
+// skip the key blocks that hold only other targets, which their mask zeroes. SiLU
+// runs on every element and the mask, which needs element coordinates, only on the
+// tiles that cross the diagonal, the end of the sequence or the targets.
 // V tiles load from a row-padded copy of V with plain joint_matrix_load at the
 // tile address: a checked load of the first V tile in the second key block
 // reads the columns of the last tile instead (DPC++ 2026.1, PVC).
-// K is transposed once to [H, D, Z * Npad], every sequence starting at column
+// K is transposed once to [H, D, Z * Npad] (32 x 32 tiles through local memory,
+// zeros past the end of every sequence), every sequence starting at column
 // z * Npad (Npad = max_seq_len rounded up to 32), so that K^T tiles load
 // row-major from an aligned column; a col_major B load of K gives wrong values
 // for bf16 on PVC (DPC++ 2026.1), and so does a K^T column offset that is not
@@ -56,6 +62,7 @@
 #include <ATen/Dispatch.h>
 #include <c10/core/DeviceGuard.h>
 #include <c10/xpu/XPUStream.h>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/sycl.hpp>
 #include <torch/library.h>
 
@@ -76,46 +83,55 @@ constexpr int kTileM = 8;    // query rows per sub-group (one XMX tile)
 constexpr int kTileN = 16;   // XMX N
 constexpr int kTileK = 16;   // XMX K for 16-bit inputs
 constexpr int kSubGroups = 8;
-constexpr int kRowsPerGroup = kSubGroups * kTileM;
+constexpr int kTransposeTile = 32;
+constexpr int kTransposeRows = 8;  // work-items per tile column; each moves 4 elements
 
-// k_t[h, d, z * npad + n] = k[seq_offsets[z] + n, h, d]
+// k_t[hd, z * npad + n] = k[seq_offsets[z] + n, hd] for n < the length of sequence z, else 0:
+// every element of k_t is written, so it needs no zero fill. A work-group moves a 32 x 32
+// tile through local memory, reading rows of k and writing rows of k_t contiguously.
 template <typename T>
 struct TransposeKeysKernel {
     const T* k;
     T* k_t;
     const int64_t* seq_offsets;
     int64_t stride_k;
-    int64_t columns;
-    int64_t total;
-    int sequences;
-    int heads;
-    int dim;
+    int64_t columns;  // sequences * npad
+    int width;        // heads * dim
     int npad;
+    sycl::local_accessor<T, 2> tile;
 
-    void operator()(sycl::item<1> item) const {
-        const int64_t index = item.get_id(0);
-        if (index >= total) {
-            return;
+    void operator()(sycl::nd_item<2> item) const {
+        const int lx = static_cast<int>(item.get_local_id(1));
+        const int ly = static_cast<int>(item.get_local_id(0));
+        const int64_t col0 = static_cast<int64_t>(item.get_group(1)) * kTransposeTile;
+        const int hd0 = static_cast<int>(item.get_group(0)) * kTransposeTile;
+        // npad is a multiple of 32, so a tile of columns lies in one sequence.
+        const int z = static_cast<int>(col0 / npad);
+        const int n0 = static_cast<int>(col0 - static_cast<int64_t>(z) * npad);
+        const int64_t start = seq_offsets[z];
+        const int len = static_cast<int>(seq_offsets[z + 1] - start);
+        for (int r = ly; r < kTransposeTile; r += kTransposeRows) {
+            const int n = n0 + r;
+            const int hd = hd0 + lx;
+            tile[r][lx] = n < len && hd < width ? k[(start + n) * stride_k + hd] : T(0);
         }
-        const int64_t row = index / (heads * dim);
-        const int hd = static_cast<int>(index % (heads * dim));
-        int low = 0;
-        int high = sequences;
-        while (high - low > 1) {
-            const int middle = (low + high) / 2;
-            if (seq_offsets[middle] <= row) {
-                low = middle;
-            } else {
-                high = middle;
+        sycl::group_barrier(item.get_group());
+        for (int r = ly; r < kTransposeTile; r += kTransposeRows) {
+            const int hd = hd0 + r;
+            const int64_t col = col0 + lx;
+            if (hd < width && col < columns) {
+                k_t[static_cast<int64_t>(hd) * columns + col] = tile[lx][r];
             }
         }
-        const int64_t n = row - seq_offsets[low];
-        k_t[hd * columns + static_cast<int64_t>(low) * npad + n] = k[row * stride_k + hd];
     }
 };
 
-template <typename T, int D>
+// MT: query tiles of kTileM rows per sub-group; every K^T and V tile feeds MT products.
+template <typename T, int D, int MT>
 struct HstuAttentionFwdKernel {
+    static constexpr int kRowsPerSubGroup = kTileM * MT;
+    static constexpr int kRowsPerWorkGroup = kSubGroups * kRowsPerSubGroup;
+
     const T* q;
     const T* k_t;
     const T* v_pad;
@@ -137,10 +153,13 @@ struct HstuAttentionFwdKernel {
     [[sycl::reqd_sub_group_size(kSubGroupSize)]] void operator()(
         sycl::nd_item<2> item) const {
         constexpr bool kStageP = std::is_same_v<T, sycl::half>;
+        static_assert(MT == 1 || MT == 2, "one or two query tiles per sub-group");
+        static_assert(!kStageP || MT == 1, "the fp16 path stages one S tile");
         // One S tile per sub-group, for the fp16 path; allocated before any return.
         auto stage = sycl::ext::oneapi::group_local_memory_for_overwrite<
             T[kStageP ? kSubGroups * kTileM * kTileN : 1]>(item.get_group());
         sycl::sub_group sg = item.get_sub_group();
+        const int sg_id = static_cast<int>(sg.get_group_linear_id());
         const int zh = item.get_group(0);
         const int z = zh / heads;
         const int h = zh % heads;
@@ -153,8 +172,8 @@ struct HstuAttentionFwdKernel {
             q_len = static_cast<int>(seq_offsets_q[z + 1] - q_start);
         }
         // i0: first query row of this sub-group in q; m0: its position in the sequence.
-        const int i0 = static_cast<int>(item.get_group(1)) * kRowsPerGroup +
-                       static_cast<int>(sg.get_group_linear_id()) * kTileM;
+        const int i0 = static_cast<int>(item.get_group(1)) * kRowsPerWorkGroup +
+                       sg_id * kRowsPerSubGroup;
         if (i0 >= q_len) {
             return;
         }
@@ -167,9 +186,20 @@ struct HstuAttentionFwdKernel {
         }
         max_ids -= n_targets;
 
-        int high = sycl::min(seq_len, m0 + kTileM);
+        int high = sycl::min(seq_len, m0 + kRowsPerSubGroup);
         if (has_contextual && m0 < contextual_seq_len) {
             high = seq_len;
+        }
+        // Key blocks [0, main_end) and [tail_begin, high): rows that are all targets see
+        // the history and themselves, so the blocks of the other targets are skipped.
+        int main_end = high;
+        int tail_begin = high;
+        if (!has_contextual && max_attn_len == 0 && m0 >= max_ids) {
+            const int history_end = (max_ids + kTileN - 1) / kTileN * kTileN;
+            if (history_end < high) {
+                main_end = history_end;
+                tail_begin = sycl::max(history_end, m0 / kTileN * kTileN);
+            }
         }
 
         const int row0 = static_cast<int>(q_start) + i0;
@@ -181,93 +211,154 @@ struct HstuAttentionFwdKernel {
         };
 
         constexpr int kDTiles = D / kTileK;
-        mx::joint_matrix<sycl::sub_group, T, mx::use::a, kTileM, kTileK, mx::layout::row_major>
-            qa[kDTiles];
+        using ATile =
+            mx::joint_matrix<sycl::sub_group, T, mx::use::a, kTileM, kTileK, mx::layout::row_major>;
+        using CTile = mx::joint_matrix<sycl::sub_group, float, mx::use::accumulator, kTileM, kTileN>;
+        using BTile =
+            mx::joint_matrix<sycl::sub_group, T, mx::use::b, kTileK, kTileN, mx::layout::row_major>;
+        // The two query tiles are separate variables: with arrays of joint_matrix tiles
+        // indexed by query tile, the output is zero (DPC++ 2026.1, PVC).
+        ATile qa0[kDTiles];
+        ATile qa1[MT == 2 ? kDTiles : 1];
+        CTile acc0[kDTiles];
+        CTile acc1[MT == 2 ? kDTiles : 1];
         #pragma unroll
         for (int t = 0; t < kDTiles; ++t) {
-            imx::joint_matrix_load_checked(sg, qa[t], global(q), stride_q, total_rows, width, row0,
-                                           h * D + t * kTileK);
-        }
-        mx::joint_matrix<sycl::sub_group, float, mx::use::accumulator, kTileM, kTileN>
-            acc[kDTiles];
-        #pragma unroll
-        for (int t = 0; t < kDTiles; ++t) {
-            mx::joint_matrix_fill(sg, acc[t], 0.0f);
+            imx::joint_matrix_load_checked(sg, qa0[t], global(q), stride_q, total_rows, width,
+                                           row0, h * D + t * kTileK);
+            mx::joint_matrix_fill(sg, acc0[t], 0.0f);
+            if constexpr (MT == 2) {
+                imx::joint_matrix_load_checked(sg, qa1[t], global(q), stride_q, total_rows, width,
+                                               row0 + kTileM, h * D + t * kTileK);
+                mx::joint_matrix_fill(sg, acc1[t], 0.0f);
+            }
         }
 
-        for (int n0 = 0; n0 < high; n0 += kTileN) {
-            mx::joint_matrix<sycl::sub_group, float, mx::use::accumulator, kTileM, kTileN> s;
-            mx::joint_matrix_fill(sg, s, 0.0f);
+        const float a = alpha;
+        const float scale = inv_max_seq_len;
+        const int ctx = contextual_seq_len;
+        const int attn_len = max_attn_len;
+        const bool has_targets = num_targets != nullptr;
+
+        // One loop over both key ranges: joint_matrix objects stay out of lambdas.
+        const int main_blocks = (main_end + kTileN - 1) / kTileN;
+        const int tail_blocks =
+            high > tail_begin ? (high - tail_begin + kTileN - 1) / kTileN : 0;
+        for (int b = 0; b < main_blocks + tail_blocks; ++b) {
+            const int n0 =
+                b < main_blocks ? b * kTileN : tail_begin + (b - main_blocks) * kTileN;
+            const int next = n0 + kTileN;
+            if (next < high) {
+                namespace syclex = sycl::ext::oneapi::experimental;
+                #pragma unroll
+                for (int t = 0; t < kDTiles; ++t) {
+                    mx::joint_matrix_prefetch<kTileK, kTileN>(
+                        sg, k_t_head + static_cast<int64_t>(t * kTileK) * stride_k_t +
+                                static_cast<int64_t>(z) * npad + next,
+                        stride_k_t, mx::layout::row_major,
+                        syclex::properties{syclex::prefetch_hint_L1});
+                    mx::joint_matrix_prefetch<kTileN, kTileN>(
+                        sg, v_pad + (seq_start + next) * width + h * D + t * kTileN, width,
+                        mx::layout::row_major, syclex::properties{syclex::prefetch_hint_L1});
+                }
+            }
+            CTile s0;
+            CTile s1;
+            mx::joint_matrix_fill(sg, s0, 0.0f);
+            if constexpr (MT == 2) {
+                mx::joint_matrix_fill(sg, s1, 0.0f);
+            }
             #pragma unroll
             for (int t = 0; t < kDTiles; ++t) {
                 // K^T tile: rows are head dims, columns are keys.
-                mx::joint_matrix<sycl::sub_group, T, mx::use::b, kTileK, kTileN,
-                                 mx::layout::row_major>
-                    kb;
+                BTile kb;
                 imx::joint_matrix_load_checked(sg, kb, global(k_t_head), stride_k_t, D,
                                                stride_k_t, t * kTileK, z * npad + n0);
-                mx::joint_matrix_mad(sg, s, qa[t], kb, s);
+                mx::joint_matrix_mad(sg, s0, qa0[t], kb, s0);
+                if constexpr (MT == 2) {
+                    mx::joint_matrix_mad(sg, s1, qa1[t], kb, s1);
+                }
             }
-            const float a = alpha;
-            const float scale = inv_max_seq_len;
-            const int ctx = contextual_seq_len;
-            const int attn_len = max_attn_len;
-            const bool has_targets = num_targets != nullptr;
-            imx::joint_matrix_apply(sg, s, [=](float& x, size_t row, size_t col) {
-                const int m = m0 + static_cast<int>(row);
-                const int n = n0 + static_cast<int>(col);
-                if (n >= seq_len) {
-                    x = 0.0f;
-                    return;
-                }
-                bool valid = m == n;
-                int mm = m;
-                int nn = n;
-                if (ctx > 0) {
-                    mm = sycl::max(m - ctx + 1, 0);
-                    nn = sycl::max(n - ctx + 1, 0);
-                }
-                if (has_targets) {
-                    mm = sycl::min(mm, max_ids);
-                    nn = sycl::min(nn, max_ids);
-                }
-                const int diff = mm - nn;
-                valid = valid || diff > 0;
-                if (attn_len > 0) {
-                    valid = valid && diff <= attn_len;
-                }
-                if (ctx > 0) {
-                    valid = valid || (mm == 0 && nn < max_ids);
-                }
+            // SiLU on every element without coordinates, then the mask on the tiles that
+            // need one: a tile of the history below the diagonal is valid everywhere. With
+            // the SiLU inside the coordinate apply, the kernel takes 1.6 times as long
+            // (DPC++ 2026.1, PVC).
+            auto silu = [=](float& x) {
                 const float qk = x * a;
-                x = valid ? qk / (1.0f + sycl::native::exp(-qk)) * scale : 0.0f;
-            });
+                x = qk / (1.0f + sycl::native::exp(-qk)) * scale;
+            };
+            auto mask = [=](int mb) {
+                return [=](float& x, size_t row, size_t col) {
+                    const int m = mb + static_cast<int>(row);
+                    const int n = n0 + static_cast<int>(col);
+                    bool valid = m == n;
+                    int mm = m;
+                    int nn = n;
+                    if (ctx > 0) {
+                        mm = sycl::max(m - ctx + 1, 0);
+                        nn = sycl::max(n - ctx + 1, 0);
+                    }
+                    if (has_targets) {
+                        mm = sycl::min(mm, max_ids);
+                        nn = sycl::min(nn, max_ids);
+                    }
+                    const int diff = mm - nn;
+                    valid = valid || diff > 0;
+                    if (attn_len > 0) {
+                        valid = valid && diff <= attn_len;
+                    }
+                    if (ctx > 0) {
+                        valid = valid || (mm == 0 && nn < max_ids);
+                    }
+                    x = valid && n < seq_len ? x : 0.0f;
+                };
+            };
+            const bool plain = ctx == 0 && attn_len == 0;
+            mx::joint_matrix_apply(sg, s0, silu);
+            if (!(plain && n0 + kTileN <= m0 && n0 + kTileN <= max_ids)) {
+                imx::joint_matrix_apply(sg, s0, mask(m0));
+            }
+            if constexpr (MT == 2) {
+                mx::joint_matrix_apply(sg, s1, silu);
+                if (!(plain && n0 + kTileN <= m0 + kTileM && n0 + kTileN <= max_ids)) {
+                    imx::joint_matrix_apply(sg, s1, mask(m0 + kTileM));
+                }
+            }
             mx::joint_matrix<sycl::sub_group, T, mx::use::a, kTileM, kTileN,
                              mx::layout::row_major>
-                p;
+                p0;
+            mx::joint_matrix<sycl::sub_group, T, mx::use::a, kTileM, kTileN,
+                             mx::layout::row_major>
+                p1;
             if constexpr (kStageP) {
-                T* tile = &(*stage)[sg.get_group_linear_id() * kTileM * kTileN];
-                imx::joint_matrix_apply(sg, s, [=](float& x, size_t row, size_t col) {
+                T* tile = &(*stage)[sg_id * kTileM * kTileN];
+                imx::joint_matrix_apply(sg, s0, [=](float& x, size_t row, size_t col) {
                     tile[row * kTileN + col] = static_cast<T>(x);
                 });
                 sycl::group_barrier(sg);
                 mx::joint_matrix_load(
-                    sg, p,
+                    sg, p0,
                     sycl::address_space_cast<sycl::access::address_space::local_space,
                                              sycl::access::decorated::no>(tile),
                     kTileN);
                 sycl::group_barrier(sg);
             } else {
-                mx::joint_matrix_copy(sg, s, p);
+                mx::joint_matrix_copy(sg, s0, p0);
+                if constexpr (MT == 2) {
+                    mx::joint_matrix_copy(sg, s1, p1);
+                }
             }
-                        const T* v_tile = v_pad + (seq_start + n0) * width + h * D;
-#pragma unroll
+            const T* v_tile = v_pad + (seq_start + n0) * width + h * D;
+            #pragma unroll
             for (int t = 0; t < kDTiles; ++t) {
                 mx::joint_matrix<sycl::sub_group, T, mx::use::b, kTileN, kTileN,
                                  mx::layout::row_major>
                     vb;
                 mx::joint_matrix_load(sg, vb, global(v_tile + t * kTileN), width);
-                mx::joint_matrix_mad(sg, acc[t], p, vb, acc[t]);
+                mx::joint_matrix_mad(sg, acc0[t], p0, vb, acc0[t]);
+                if constexpr (MT == 2) {
+                    mx::joint_matrix_mad(sg, acc1[t], p1, vb, acc1[t]);
+                }
             }
         }
 
@@ -275,13 +366,31 @@ struct HstuAttentionFwdKernel {
         const int64_t stride = stride_o;
         #pragma unroll
         for (int t = 0; t < kDTiles; ++t) {
-            imx::joint_matrix_apply(sg, acc[t], [=](float& x, size_t row, size_t col) {
+            imx::joint_matrix_apply(sg, acc0[t], [=](float& x, size_t row, size_t col) {
                 const int i = i0 + static_cast<int>(row);
                 if (i < q_len) {
                     out_base[i * stride + t * kTileN + static_cast<int>(col)] = static_cast<T>(x);
                 }
             });
+            if constexpr (MT == 2) {
+                imx::joint_matrix_apply(sg, acc1[t], [=](float& x, size_t row, size_t col) {
+                    const int i = i0 + kTileM + static_cast<int>(row);
+                    if (i < q_len) {
+                        out_base[i * stride + t * kTileN + static_cast<int>(col)] =
+                            static_cast<T>(x);
+                    }
+                });
+            }
         }
+    }
+};
+
+// A kernel with 256 general registers per thread (half the threads per vector engine).
+template <typename Kernel>
+struct LargeGrf : Kernel {
+    auto get(sycl::ext::oneapi::experimental::properties_tag) const {
+        return sycl::ext::oneapi::experimental::properties{
+            sycl::ext::intel::experimental::grf_size<256>};
     }
 };
 
@@ -290,10 +399,14 @@ void launch(const at::Tensor& q, const at::Tensor& k_t, const at::Tensor& v_pad,
             const at::Tensor& seq_offsets, const c10::optional<at::Tensor>& seq_offsets_q,
             const c10::optional<at::Tensor>& num_targets, int64_t max_seq_len,
             int64_t max_rows, double alpha, int64_t contextual_seq_len, int64_t max_attn_len) {
+    // Two query tiles per sub-group need the 256 registers of a large-GRF thread.
+    constexpr int MT = std::is_same_v<T, sycl::half> ? 1 : 2;
+    using Kernel = HstuAttentionFwdKernel<T, D, MT>;
     const int64_t z = seq_offsets.numel() - 1;
     const int64_t heads = q.size(1);
-    const int64_t row_groups = (max_rows + kRowsPerGroup - 1) / kRowsPerGroup;
-    HstuAttentionFwdKernel<T, D> kernel{
+    const int64_t row_groups =
+        (max_rows + Kernel::kRowsPerWorkGroup - 1) / Kernel::kRowsPerWorkGroup;
+    Kernel kernel{
         reinterpret_cast<const T*>(q.data_ptr()),
         reinterpret_cast<const T*>(k_t.data_ptr()),
         reinterpret_cast<const T*>(v_pad.data_ptr()),
@@ -312,37 +425,53 @@ void launch(const at::Tensor& q, const at::Tensor& k_t, const at::Tensor& v_pad,
         static_cast<int>(contextual_seq_len),
         static_cast<int>(max_attn_len),
     };
+    const sycl::nd_range<2> range(
+        sycl::range<2>(z * heads, row_groups * kSubGroups * kSubGroupSize),
+        sycl::range<2>(1, kSubGroups * kSubGroupSize));
     sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
     queue.submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(
-            sycl::nd_range<2>(sycl::range<2>(z * heads, row_groups * kSubGroups * kSubGroupSize),
-                              sycl::range<2>(1, kSubGroups * kSubGroupSize)),
-            kernel);
+        if constexpr (MT == 2) {
+            cgh.parallel_for(range, LargeGrf<Kernel>{kernel});
+        } else {
+            cgh.parallel_for(range, kernel);
+        }
+    });
+}
+
+template <typename T>
+void launch_transpose_keys(const at::Tensor& k, at::Tensor& k_t, const at::Tensor& offsets,
+                           int64_t npad) {
+    const int width = static_cast<int>(k.size(1) * k.size(2));
+    const int64_t columns = k_t.size(2);
+    const sycl::nd_range<2> range(
+        sycl::range<2>((width + kTransposeTile - 1) / kTransposeTile * kTransposeRows,
+                       (columns + kTransposeTile - 1) / kTransposeTile * kTransposeTile),
+        sycl::range<2>(kTransposeRows, kTransposeTile));
+    c10::xpu::getCurrentXPUStream().queue().submit([&](sycl::handler& cgh) {
+        TransposeKeysKernel<T> kernel{
+            reinterpret_cast<const T*>(k.data_ptr()),
+            reinterpret_cast<T*>(k_t.data_ptr()),
+            offsets.data_ptr<int64_t>(),
+            k.stride(0),
+            columns,
+            width,
+            static_cast<int>(npad),
+            sycl::local_accessor<T, 2>(sycl::range<2>(kTransposeTile, kTransposeTile + 1), cgh)};
+        cgh.parallel_for(range, kernel);
     });
 }
 
 void transpose_keys(const at::Tensor& k, at::Tensor& k_t, const at::Tensor& offsets,
                     int64_t npad) {
-    const int64_t total = k.size(0) * k.size(1) * k.size(2);
     AT_DISPATCH_SWITCH(
         k.scalar_type(), "hstu_mha_transpose_keys",
-        AT_DISPATCH_CASE(at::kBFloat16, [&] {
-            using T = sycl::ext::oneapi::bfloat16;
-            TransposeKeysKernel<T> kernel{
-                reinterpret_cast<const T*>(k.data_ptr()), reinterpret_cast<T*>(k_t.data_ptr()),
-                offsets.data_ptr<int64_t>(), k.stride(0), k_t.size(2), total,
-                static_cast<int>(offsets.numel() - 1), static_cast<int>(k.size(1)),
-                static_cast<int>(k.size(2)), static_cast<int>(npad)};
-            c10::xpu::getCurrentXPUStream().queue().parallel_for(sycl::range<1>(total), kernel);
-        }) AT_DISPATCH_CASE(at::kHalf, [&] {
-            using T = sycl::half;
-            TransposeKeysKernel<T> kernel{
-                reinterpret_cast<const T*>(k.data_ptr()), reinterpret_cast<T*>(k_t.data_ptr()),
-                offsets.data_ptr<int64_t>(), k.stride(0), k_t.size(2), total,
-                static_cast<int>(offsets.numel() - 1), static_cast<int>(k.size(1)),
-                static_cast<int>(k.size(2)), static_cast<int>(npad)};
-            c10::xpu::getCurrentXPUStream().queue().parallel_for(sycl::range<1>(total), kernel);
-        }));
+        AT_DISPATCH_CASE(at::kBFloat16,
+                         [&] {
+                             launch_transpose_keys<sycl::ext::oneapi::bfloat16>(k, k_t, offsets,
+                                                                                npad);
+                         })
+            AT_DISPATCH_CASE(at::kHalf,
+                             [&] { launch_transpose_keys<sycl::half>(k, k_t, offsets, npad); }));
 }
 
 void check_strides(const at::Tensor& tensor, const char* name, int64_t dim) {
@@ -425,12 +554,13 @@ at::Tensor hstu_mha_xpu(
     }
     const int64_t sequences = offsets.numel() - 1;
     const int64_t npad = (n + 31) / 32 * 32;
-    at::Tensor k_t = at::zeros({q.size(1), dim, sequences * npad}, k.options());
+    at::Tensor k_t = at::empty({q.size(1), dim, sequences * npad}, k.options());
     transpose_keys(k, k_t, offsets, npad);
     // [L + one key tile, H * D]: the last key tile of the last sequence stays in bounds.
     const int64_t kv_rows = v.size(0);
-    at::Tensor v_pad = at::zeros({kv_rows + kTileN, v.size(1) * dim}, v.options());
+    at::Tensor v_pad = at::empty({kv_rows + kTileN, v.size(1) * dim}, v.options());
     v_pad.narrow(0, 0, kv_rows).copy_(v.reshape({kv_rows, v.size(1) * dim}));
+    v_pad.narrow(0, kv_rows, kTileN).zero_();
 
 #define HSTU_LAUNCH(SCALAR, DIM)                                                            \
     launch<SCALAR, DIM>(q, k_t, v_pad, out, offsets, offsets_q, targets, n, max_rows, alpha, \
