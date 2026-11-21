@@ -18,7 +18,10 @@ BOUNDS = "fbgemm::bounds_check_indices"
 
 @pytest.fixture
 def fbgemm():
-    version = importlib.metadata.version("fbgemm-gpu-cpu")
+    try:
+        version = importlib.metadata.version("fbgemm-gpu-cpu")
+    except importlib.metadata.PackageNotFoundError:
+        version = importlib.metadata.version("fbgemm-gpu")
     assert version.split(".")[:2] == ["1", "10"], version  # nosec B101
     importlib.import_module("fbgemm_gpu")
     return importlib.import_module("fbgemm_gpu.split_table_batched_embeddings_ops_inference")
