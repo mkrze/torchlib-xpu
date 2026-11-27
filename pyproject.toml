@@ -1,9 +1,9 @@
 [project]
 name = "torchlib-xpu"
-version = "0.5.0"
+version = "0.6.0"
 description = "Intel® XPU Library for PyTorch* Ecosystem Projects"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
     { name = "Dmitry Rogozhkin", email = "dmitry.v.rogozhkin@intel.com" },
@@ -12,6 +12,7 @@ dependencies = [ "torchcodec-xpu" ]
 
 [project.optional-dependencies]
 test = [
+    "pre-commit",
     "ruff",
     "torchcodec-xpu[test]"
 ]
@@ -34,5 +35,5 @@ torchcodec-xpu = { workspace = true }
 members = [ "packages/*" ]
 
 [tool.ruff.lint]
-    select = ["E", "F", "I"]
+    select = ["E", "F", "I", "W"]
     ignore = ["E501", "F403", "F405"]

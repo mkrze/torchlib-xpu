@@ -29,7 +29,10 @@ uv venv && uv pip install -e ".[test]" \
 
 ```
 ruff check
+pre-commit run --all-files
 ```
+
+The second command checks trailing whitespace and file endings in all files except patches and CSV baselines, and fixes what it finds. Run `pre-commit install` to have it fix files on every commit.
 
 ## How to test Intel® plugin for TorchCodec
 
@@ -113,7 +116,7 @@ The upstream FBGEMM tests cover shared operator behavior and parity with the CPU
 
 ```
 export FBGEMM_XPU_PATH=$TORCHLIB_XPU_PATH/packages/fbgemm-xpu/
-git clone --branch v1.9.0 https://github.com/pytorch/FBGEMM.git && cd FBGEMM
+git clone --branch v1.10.0 https://github.com/pytorch/FBGEMM.git && cd FBGEMM
 git am $FBGEMM_XPU_PATH/patches/0001-Add-XPU-support-to-fbgemm-tests.patch
 ```
 
@@ -159,7 +162,7 @@ The upstream FBGEMM jagged tensor benchmark script is also patched to time on XP
 
 ```
 export FBGEMM_XPU_PATH=$TORCHLIB_XPU_PATH/packages/fbgemm-xpu/
-git clone --branch v1.9.0 https://github.com/pytorch/FBGEMM.git && cd FBGEMM
+git clone --branch v1.10.0 https://github.com/pytorch/FBGEMM.git && cd FBGEMM
 git am $FBGEMM_XPU_PATH/patches/0001-Add-XPU-support-to-fbgemm-tests.patch
 git am $FBGEMM_XPU_PATH/patches/0002-Add-XPU-support-to-fbgemm-jagged-benchmark.patch
 ```
@@ -174,6 +177,23 @@ ZE_AFFINITY_MASK=0 python fbgemm_gpu/bench/jagged_tensor_benchmark.py device --b
 
 The other upstream benchmark cases don't use any XPU-implemented operator, so they are skipped on XPU. Run `python fbgemm_gpu/bench/jagged_tensor_benchmark.py --help` to list all cases and their options.
 
+### TBE training lookups
+
+The table batched embedding (TBE) training lookups are benchmarked with the `tbe-training` benchmark shipped in `fbgemm_xpu.bench`. It times the dense lookup and the split lookup with fused rowwise Adagrad, forward and backward, on the no-bag, unweighted path. Workloads are `TBEDataConfig` JSON files, committed in [`packages/fbgemm-xpu/bench/tbe/configs/`](packages/fbgemm-xpu/bench/tbe/configs/). Run it from the repository root on a single device with:
+
+```
+ZE_AFFINITY_MASK=0 python -m fbgemm_xpu.bench.tbe_training \
+  packages/fbgemm-xpu/bench/tbe/configs/{small,medium,large,skewed}.json \
+  --output tbe_training.csv
+```
+
+It can be narrowed with `--dtypes` (`float32`, `float16`), `--families` (`dense`, `split`) and `--iters`. The `--smoke` flag shrinks every config and runs few iterations, so its timings are not meaningful:
+
+```
+python -m fbgemm_xpu.bench.tbe_training --smoke \
+  packages/fbgemm-xpu/bench/tbe/configs/{small,medium,large,skewed}.json --output tbe_training_smoke.csv
+```
+
 ## Tips
 
 ### oneAPI compatibility
@@ -182,6 +202,7 @@ Use the following compatibility table when self-building the project and its dep
 
 | PyTorch | Torchvision | oneAPI         |
 | ------- | ----------- | -------------- |
+| 2.15    | 0.29        | [2026.1][2-15] |
 | 2.14    | 0.29        | [2026.1][2-14] |
 | 2.13    | 0.28        | [2026.0][2-13] |
 | 2.12    | 0.27        | [2025.3][2-12] |
@@ -193,6 +214,7 @@ Use the following compatibility table when self-building the project and its dep
 [TorchCodec]: https://github.com/meta-pytorch/torchcodec
 [FBGEMM]: https://github.com/pytorch/FBGEMM
 
+[2-15]: https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-15.html
 [2-14]: https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-14.html
 [2-13]: https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-13.html
 [2-12]: https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu/2-12.html

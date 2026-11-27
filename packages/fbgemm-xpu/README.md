@@ -138,9 +138,18 @@ python -c "import fbgemm_xpu; print(fbgemm_xpu.__version__)"
 The jagged operators `jagged_to_padded_dense`, `jagged_2d_to_dense`,
 `dense_to_jagged` and `jagged_dense_elementwise_add_jagged_output` are
 benchmarked, forward and backward, with `python -m fbgemm_xpu.bench.jagged_sweep`.
-The upstream FBGEMM jagged tensor benchmark is also patched for XPU. The
-[baselines README](bench/baselines/README.md) covers how to reproduce the
-results, the sweep definition and the committed baselines. See also
+The upstream FBGEMM jagged tensor benchmark is also patched for XPU.
+
+The TBE training lookups, `dense_embedding_codegen_lookup_function` and
+`split_embedding_codegen_lookup_rowwise_adagrad_function_pt2`, are benchmarked
+forward and backward on the no-bag, unweighted path with
+`python -m fbgemm_xpu.bench.tbe_training`. It loads its workload shapes from
+the `TBEDataConfig` files in [bench/tbe/configs](bench/tbe/configs), and calls
+the operators directly, so it measures the operators rather than
+`SplitTableBatchedEmbeddingBagsCodegen`.
+
+The [baselines README](bench/baselines/README.md) covers how to reproduce the
+results, what each benchmark measures and the committed baselines. See also
 [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Environment variables
@@ -170,17 +179,18 @@ The lookup operators do not currently support:
 - global weight decay (GWD);
 - cache-backed lookup.
 
-The pristine FBGEMM 1.9.0 high-level training frontend does not expose
-`ComputeDevice.XPU`. Constructing
-`SplitTableBatchedEmbeddingBagsCodegen` for XPU is therefore unavailable in
-this release. The upstream high-level TBE tests therefore do not exercise these
-lookup operators on XPU. Instead, CI runs
-[`test_lookup_ops.py`](tests/test_lookup_ops.py), which calls the supported
-`torch.ops.fbgemm` methods directly on XPU. The separately patched upstream
-FBGEMM tests cover the existing non-lookup operators.
+FBGEMM 1.10 adds `ComputeDevice.XPU` to the high-level training frontend, but
+`SplitTableBatchedEmbeddingBagsCodegen` still takes its device from
+`torch.cuda.current_device()` unless `device=` is given, and the upstream
+high-level TBE tests do not exercise these lookup operators on XPU. Instead, CI
+runs [`test_lookup_ops.py`](tests/test_lookup_ops.py), which calls the
+supported `torch.ops.fbgemm` methods directly on XPU. The separately patched
+upstream FBGEMM tests cover the existing non-lookup operators.
 
-`bounds_check_indices` implements version 1 only. Version 2 and
-`prefetch_pipeline=True` are not implemented on XPU.
+`bounds_check_indices` implements version 1 only, with the `FATAL`, `WARNING`
+and `IGNORE` modes. Version 2, `prefetch_pipeline=True` and the
+`WARNING_ALLOW_TRAILING_INDICES` mode of FBGEMM 1.10 are not implemented on
+XPU.
 
 `all_to_one_device` copies between XPU devices of one process. The pooled
 merge operators (`merge_pooled_embeddings`, `sum_reduce_to_one`) are not
